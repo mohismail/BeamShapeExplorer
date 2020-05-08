@@ -75,12 +75,12 @@ namespace BeamShapeExplorer
 
             //Code limits for design
             double cdMax = ec / (ec + es);
-            double rhoMax = (0.36 * fc / (0.87 * fy)) * cdMax;
-            double rhoMin = 0.25 * Math.Sqrt(fc) / fy;
+            double rhoMax = (0.319 * fc / (fy)); //Changed coefficients. Assuming tension-controlled limit controls
+            double rhoMin = Math.max((0.25 * Math.Sqrt(fc) / fy),(1.4 / fy)); //ACI 9.6.1.2 SI Units
 
             //Creates planar Breps from input curves
             Brep[] brepsAg = Brep.CreatePlanarBreps(crvAg, DocumentTolerance());
-            Brep[] brepsAs = Brep.CreatePlanarBreps(crvAs, DocumentTolerance());
+            Brep[] brepsAs = Brep.CreatePlanarBreps(crvAs, DocumentTolerance()); 
 
             List<Curve> bwCrvs = new List<Curve>();
             List<double> sectRho = new List<double>();
@@ -150,7 +150,7 @@ namespace BeamShapeExplorer
 
                 double maxError = 100*((rhoMax-rho)/rhoMax);
                 maxErrors.Add(maxError);
-repos
+                repos;
                 double minError = 100*(rho-rhoMin)/rhoMin;
                 minErrors.Add(minError);
 
