@@ -94,8 +94,8 @@ namespace BeamShapeExplorer
 
             //Code limits for design
             double cdMax = ec / (ec + es);
-            double rhoMax = (0.36 * fc / (0.87 * fy)) * cdMax;
-            double rhoMin = 0.25 * Math.Sqrt(fc) / fy;
+            double rhoMax = (0.319 * fc / (fy)); //Changed coefficients. Assuming tension-controlled limit controls
+            double rhoMin = Math.max((0.25 * Math.Sqrt(fc) / fy), (1.4 / fy)); //ACI 9.6.1.2 SI Units
 
             //Steel design constants
             double rhoDes = 0.66 * rhoMax;
@@ -175,7 +175,7 @@ namespace BeamShapeExplorer
                 double As = brepAs.GetArea();
                 //double Z = centBrepAs.DistanceTo(centCompAg);
                 double Z = centBrepAs.Z - centCompAg.Z;
-                double T = 0.87 * As * fy * 1000; //ADD NEGATIVE ACCOMODATION...
+                double T = As * fy * 1000; //ADD NEGATIVE ACCOMODATION...
                 double sectMn = T * Z;
                 Mn.Add(sectMn);
 
