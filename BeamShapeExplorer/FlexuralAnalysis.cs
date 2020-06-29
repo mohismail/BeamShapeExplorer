@@ -48,7 +48,7 @@ namespace BeamShapeExplorer
         protected override void RegisterOutputParams(GH_Component.GH_OutputParamManager pManager)
         {
             pManager.AddNumberParameter("Moment Capacity (kN-m)", "Mn", "Moment Capacity (kN-m)", GH_ParamAccess.list);
-            pManager.AddNumberParameter("Moment Capacity Overdesign (%)", "%error", "Percent error of moment capacity, negative if capacity has not met demand", GH_ParamAccess.list);
+            //pManager.AddNumberParameter("Moment Capacity Overdesign (%)", "%error", "Percent error of moment capacity, negative if capacity has not met demand", GH_ParamAccess.list);
             pManager.AddBrepParameter("Compression Area", "Ac", "Area of concrete in compression block, Ac", GH_ParamAccess.list);
 
         }
@@ -114,14 +114,21 @@ namespace BeamShapeExplorer
                 Brep brepAs = new Brep();
                 brepAs = brepsAs[i];
 
-                BoundingBox bbox = brepAg.GetBoundingBox(true);
-
                 Surface srfAg = brepAg.Surfaces[0];
-                Double uSrfC = srfAg.Domain(0)[1] - srfAg.Domain(0)[0];
-                Double vSrfC = srfAg.Domain(1)[1] - srfAg.Domain(1)[0];
 
-                Curve U = srfAg.IsoCurve(0, 0.5 * vSrfC + srfAg.Domain(1)[0]);
-                Curve V = srfAg.IsoCurve(1, 0.5 * uSrfC + srfAg.Domain(0)[0]);
+                Double uMidDom = (srfAg.Domain(0)[1] + srfAg.Domain(0)[0]) / 2;
+                Double vMidDom = (srfAg.Domain(1)[1] + srfAg.Domain(1)[0]) / 2;
+
+                //Correction of U and V curve extraction
+                Curve U0 = srfAg.IsoCurve(0, vMidDom);
+                Curve[] UIntCrv; Point3d[] UIntPt;
+                Rhino.Geometry.Intersect.Intersection.CurveBrep(U0, brepAg, DocumentTolerance(), out UIntCrv, out UIntPt);
+                Curve U = UIntCrv[0];
+
+                Curve V0 = srfAg.IsoCurve(1, uMidDom);
+                Curve[] VIntCrv; Point3d[] VIntPt;
+                Rhino.Geometry.Intersect.Intersection.CurveBrep(V0, brepAg, DocumentTolerance(), out VIntCrv, out VIntPt);
+                Curve V = VIntCrv[0];
 
                 Point3d endPtV = V.PointAtEnd; Point3d startPtV = V.PointAtStart;
                 if(endPtV.Z > startPtV.Z) { V.Reverse(); }
@@ -185,8 +192,8 @@ namespace BeamShapeExplorer
             }
 
             DA.SetDataList(0, Mn);
-            DA.SetDataList(1, errors);
-            DA.SetDataList(2, finalSubSrf);
+            //DA.SetDataList(1, errors);
+            DA.SetDataList(1, finalSubSrf);
 
         }
 

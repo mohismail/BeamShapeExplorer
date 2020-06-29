@@ -30,7 +30,7 @@ namespace BeamShapeExplorer
 
             pManager.AddNumberParameter("Shear Reinforcement Diameter (mm)", "dv", "Diameter (mm) of transverse reinforcement", GH_ParamAccess.item, 10);
             pManager.AddNumberParameter("Shear Reinforcement Spacing (mm)", "s", "Spaceing (mm) of transverse reinforcement", GH_ParamAccess.item, 100);
-            pManager.AddNumberParameter("Shear Reiforcement Inclination Angle (rads)", "θ", "Inclination angle (radians) of transverse reinforcement", GH_ParamAccess.item, (Math.PI/2));
+            pManager.AddNumberParameter("Shear Reinforcement Inclination Angle (rads)", "θ", "Inclination angle (radians) of transverse reinforcement", GH_ParamAccess.item, (Math.PI/2));
         }
 
         /// <summary>

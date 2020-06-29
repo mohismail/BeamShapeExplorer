@@ -39,11 +39,13 @@ namespace BeamShapeExplorer
         protected override void RegisterOutputParams(GH_Component.GH_OutputParamManager pManager)
         {
             pManager.AddNumberParameter("Reinforcement Ratio", "ρ", "Steel reinforcement ratio at each section", GH_ParamAccess.list);
-            pManager.AddNumberParameter("Reinforcement ratio overdesign (%)", "ρmax %error", "Percent error of reinforcement ratio overdesign, negative if exceeds the maximum permissable ratio", GH_ParamAccess.list);
-            pManager.AddNumberParameter("Reinforcement ratio underdesign (%)", "ρmin %error", "Percent error of reinforcement ratio underdesign, negative if below the minimum permissable ratio", GH_ParamAccess.list);
+            //pManager.AddNumberParameter("Reinforcement ratio overdesign (%)", "ρmax %error", "Percent error of reinforcement ratio overdesign, negative if exceeds the maximum permissable ratio", GH_ParamAccess.list);
+            //pManager.AddNumberParameter("Reinforcement ratio underdesign (%)", "ρmin %error", "Percent error of reinforcement ratio underdesign, negative if below the minimum permissable ratio", GH_ParamAccess.list);
             pManager.AddCurveParameter("bwCrv", "bwCrv", "bwCrv", GH_ParamAccess.list);
             pManager.AddNumberParameter("Max Reinforcement Ratio", "ρmax", "Maximum Steel reinforcement ratio at each section", GH_ParamAccess.list);
             pManager.AddNumberParameter("Min Reinforcement Ratio", "ρmin", "Minimum Steel reinforcement ratio at each section", GH_ParamAccess.list);
+
+            ((IGH_PreviewObject)pManager[1]).Hidden = true;
 
         }
 
@@ -100,11 +102,20 @@ namespace BeamShapeExplorer
                 Brep brepAs = brepsAs[i];
 
                 Surface srfAg = brepAg.Surfaces[0];
-                Double uSrfC = srfAg.Domain(0)[1] - srfAg.Domain(0)[0];
-                Double vSrfC = srfAg.Domain(1)[1] - srfAg.Domain(1)[0];
 
-                Curve U = srfAg.IsoCurve(0, 0.5 * vSrfC + srfAg.Domain(1)[0]);
-                Curve V = srfAg.IsoCurve(1, 0.5 * uSrfC + srfAg.Domain(0)[0]);
+                Double uMidDom = (srfAg.Domain(0)[1] + srfAg.Domain(0)[0]) / 2;
+                Double vMidDom = (srfAg.Domain(1)[1] + srfAg.Domain(1)[0]) / 2;
+
+                //Correction of U and V curve extraction
+                Curve U0 = srfAg.IsoCurve(0, vMidDom);
+                Curve[] UIntCrv; Point3d[] UIntPt;
+                Rhino.Geometry.Intersect.Intersection.CurveBrep(U0, brepAg, DocumentTolerance(), out UIntCrv, out UIntPt);
+                Curve U = UIntCrv[0];
+
+                Curve V0 = srfAg.IsoCurve(1, uMidDom);
+                Curve[] VIntCrv; Point3d[] VIntPt;
+                Rhino.Geometry.Intersect.Intersection.CurveBrep(V0, brepAg, DocumentTolerance(), out VIntCrv, out VIntPt);
+                Curve V = VIntCrv[0];
 
                 Point3d endPtV = V.PointAtEnd; Point3d startPtV = V.PointAtStart;
                 if (endPtV.Z > startPtV.Z) { V.Reverse(); }
@@ -129,13 +140,14 @@ namespace BeamShapeExplorer
                 //if (vContours[0] == null) { bwCrv = U; }
                 //else { bwCrv = vContours[0]; }
                 bwCrv = vContours[0];
+                if (bwCrv == null) { bwCrv = U; }
+
                 bwCrvs.Add(bwCrv);
 
                 double areaAs = AreaMassProperties.Compute(crvAs[i]).Area;
-                double bw = 0;
-                double d = 0;
-                double bwd = 0;
-                if (bwCrv != null) { bw = bwCrv.GetLength(); d = U.GetLength(); bwd = bw * d; }
+                double bw, d, bwd = 0;
+
+                bw = bwCrv.GetLength(); d = U.GetLength(); bwd = bw * d;
                 double rho = areaAs / bwd;
 
                 if (double.IsPositiveInfinity(rho) || double.IsNegativeInfinity(rho))
@@ -150,7 +162,7 @@ namespace BeamShapeExplorer
 
                 double maxError = 100*((rhoMax-rho)/rhoMax);
                 maxErrors.Add(maxError);
-repos
+
                 double minError = 100*(rho-rhoMin)/rhoMin;
                 minErrors.Add(minError);
 
@@ -159,11 +171,11 @@ repos
             }
 
             DA.SetDataList(0, sectRho);
-            DA.SetDataList(1, maxErrors);
-            DA.SetDataList(2, minErrors);
-            DA.SetDataList(3, bwCrvs);
-            DA.SetDataList(4, rhoMaxs);
-            DA.SetDataList(5, rhoMins);
+            //DA.SetDataList(1, maxErrors);
+            //DA.SetDataList(2, minErrors);
+            DA.SetDataList(1, bwCrvs);
+            DA.SetDataList(2, rhoMaxs);
+            DA.SetDataList(3, rhoMins);
 
         }
 
