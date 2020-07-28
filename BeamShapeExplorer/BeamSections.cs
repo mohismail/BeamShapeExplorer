@@ -118,7 +118,7 @@ namespace BeamShapeExplorer
 
             
             //Code limits for design
-            double cdMax, rhoMax, rhoMin = 0;
+            double cdMax, B1, rhoMax, rhoMin = 0;
             double rhoDes, sConst = 0;
 
             if (code == 1)
@@ -134,7 +134,8 @@ namespace BeamShapeExplorer
             else 
             {
                 cdMax = ec / (ec + es);
-                rhoMax = (0.36 * fc / (0.87 * fy)) * cdMax;
+                B1 = 0.85 - (0.05 * ((fc - 28) / 7)); //Calculate Beta_1 due to change of concrete strength
+                rhoMax = (0.85 * fc / (fy)) * B1 * cdMax; //ACI-318 Code
                 rhoMin = Math.Max(0.25 * Math.Sqrt(fc) / fy, 1.4/fy);
 
                 //Steel design constants

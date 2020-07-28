@@ -33,6 +33,8 @@ namespace BeamShapeExplorer
             pManager.AddCurveParameter("Concrete Section", "Ag", "Concrete sections to analyze for flexural capacity", GH_ParamAccess.list);
             pManager.AddCurveParameter("Steel Section", "As", "Steel sections to analyze to flesural capacity", GH_ParamAccess.list);
 
+            pManager.AddNumberParameter("Clear Cover (mm)", "cc", "An initial estimate for the steel clear cover (mm)", GH_ParamAccess.item, 30);
+
             pManager.AddIntegerParameter("Section subdivisions", "m", "Number of cuts to identify web width, bw, defaults to 10", GH_ParamAccess.item, 15);
         }
 
@@ -42,6 +44,10 @@ namespace BeamShapeExplorer
         protected override void RegisterOutputParams(GH_Component.GH_OutputParamManager pManager)
         {
             pManager.AddNumberParameter("Shear Capacity (kN)", "Vn", "Shear Capacity (kN)", GH_ParamAccess.list);
+            //pManager.AddNumberParameter("Vc1Sect", "Vc1Sect", "Vc1Sect", GH_ParamAccess.list);
+            //pManager.AddNumberParameter("Vc2Sect", "Vc2Sect", "Vc2Sect", GH_ParamAccess.list);
+            //pManager.AddNumberParameter("Sectbw", "Sectbw", "Sectbw", GH_ParamAccess.list);
+            //pManager.AddNumberParameter("Sectd", "Sectd", "Sectd", GH_ParamAccess.list);
             pManager.AddNumberParameter("Shear Capacity Overdesign (%)", "%error", "Percent error of moment capacity, negative if capacity has not met demand", GH_ParamAccess.list);
 
             //pManager.AddCurveParameter("bw", "bw", "bw", GH_ParamAccess.list);
@@ -59,6 +65,7 @@ namespace BeamShapeExplorer
             List<double> Vs = new List<double>();
             List<Curve> crvAg = new List<Curve>();
             List<Curve> crvAs = new List<Curve>();
+            double CC = 0;
             int M = 0;
 
             if (!DA.GetData(0, ref mp)) return;
@@ -67,7 +74,8 @@ namespace BeamShapeExplorer
             if (!DA.GetDataList(3, Vs)) return;
             if (!DA.GetDataList(4, crvAg)) return;
             if (!DA.GetDataList(5, crvAs)) return;
-            if (!DA.GetData(6, ref M)) return;
+            if (!DA.GetData(6, ref CC)) return;
+            if (!DA.GetData(7, ref M)) return;
 
             if (M <= 2)
             {
@@ -106,9 +114,13 @@ namespace BeamShapeExplorer
             List<Curve> bwCrvs = new List<Curve>();
             List<double> sectRho = new List<double>();
             List<double> Vn = new List<double>();
+            List<double> Vc1Sect = new List<double>();
+            List<double> Vc2Sect = new List<double>();
+            List<double> Sectbw = new List<double>();
+            List<double> Sectd = new List<double>();
             List<double> errors = new List<double>();
 
-
+            
             for (int i = 0; i < crvAg.Count; i++)
             {
                 Brep brepAg = brepsAg[i];
@@ -150,7 +162,7 @@ namespace BeamShapeExplorer
                 double bw = 0;
                 double d = 0;
                 double bwd = 0;
-                if (bwCrv != null) { bw = bwCrv.GetLength(); d = U.GetLength(); bwd = bw * d; }
+                if (bwCrv != null) { bw = bwCrv.GetLength(); d = (0.96 * V.GetLength()) - (CC / 1000); bwd = bw * d; }
                 double rho = areaAs / bwd;
 
                 sectRho.Add(rho);
@@ -176,10 +188,14 @@ namespace BeamShapeExplorer
 
                 double sectVn = 0;
                 if (Double.IsNaN(sectVn)) { sectVn = 0; }
-                else if (newVs[i] < DocumentTolerance()) { sectVn = Math.Min(sectVcIS, sectVcACI) * 0.5; }
-                else { sectVn = Math.Min(sectVcIS, sectVcACI) + newVs[i]; }
+                else if (newVs[i] < DocumentTolerance()) { sectVn = sectVcACI * 0.5; }
+                else { sectVn = sectVcACI + newVs[i]; }
 
                 Vn.Add(sectVn);
+                Vc1Sect.Add(Vc1);
+                Vc2Sect.Add(Vc2);
+                Sectbw.Add(bw);
+                Sectd.Add(d);
 
                 double error = ((sectVn - Math.Abs(newVu[i])) / Math.Abs(newVu[i])) * 100;
                 errors.Add(error);
@@ -188,6 +204,10 @@ namespace BeamShapeExplorer
             }
 
             DA.SetDataList(0, Vn);
+            //DA.SetDataList(1, Vc1Sect);
+            //DA.SetDataList(2, Vc2Sect);
+            //DA.SetDataList(3, Sectbw);
+            //DA.SetDataList(4, Sectd);
             DA.SetDataList(1, errors);
             //DA.SetDataList(2, bwCrvs);
 

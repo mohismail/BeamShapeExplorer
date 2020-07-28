@@ -91,15 +91,19 @@ namespace BeamShapeExplorer
             List<double> Mn = new List<double>();
             List<double> errors = new List<double>();
 
+            //Code limits for design
+            double cdMax, B1, rhoMax, rhoMin = 0;
+            double rhoDes, sConst = 0;
 
             //Code limits for design
-            double cdMax = ec / (ec + es);
-            double rhoMax = (0.36 * fc / (0.87 * fy)) * cdMax;
-            double rhoMin = 0.25 * Math.Sqrt(fc) / fy;
+            cdMax = ec / (ec + es);
+            B1 = 0.85 - (0.05 * ((fc - 28) / 7)); //Calculate Beta_1 due to change of concrete strength
+            rhoMax = (0.85 * fc / (fy)) * B1 * cdMax; //ACI-318 Code
+            rhoMin = Math.Max(0.25 * Math.Sqrt(fc) / fy, 1.4 / fy);
 
             //Steel design constants
-            double rhoDes = 0.66 * rhoMax;
-            double sConst = 0.87 * fy * (1 - 1.005 * rhoDes * (fy / fc));
+            rhoDes = 0.66 * rhoMax;
+            sConst = 0.87 * fy * (1 - 1.005 * rhoDes * (fy / fc));
 
             //for testing with single moment at all points
             double[] newMu = new double[crvAg.Count];
@@ -175,7 +179,7 @@ namespace BeamShapeExplorer
                 double As = brepAs.GetArea();
                 //double Z = centBrepAs.DistanceTo(centCompAg);
                 double Z = centBrepAs.Z - centCompAg.Z;
-                double T = 0.87 * As * fy * 1000; //ADD NEGATIVE ACCOMODATION...
+                double T = As * fy * 1000; //ADD NEGATIVE ACCOMODATION...
                 double sectMn = T * Z;
                 Mn.Add(sectMn);
 
