@@ -68,6 +68,7 @@ namespace BeamShapeExplorer
             double selAs = 0;
             bool fix = false;
             int code = 0;
+            int building_code = 0;
 
 
             if (!DA.GetData(0, ref mp)) return;
@@ -118,13 +119,21 @@ namespace BeamShapeExplorer
 
             
             //Code limits for design
-            double cdMax, rhoMax, rhoMin = 0;
+            double cdMax, B1, rhoMax=0, rhoMin = 0;
             double rhoDes, sConst = 0;
 
             if (code == 1)
             {
                 cdMax = ec / (ec + es);
-                rhoMax = (0.36 * fc / (0.87 * fy)) * cdMax;
+                if (building_code == 0)
+                {
+                    rhoMax = (0.36 * fc / (0.87 * fy)) * cdMax; //Indian NBC 
+                }
+                else if (building_code == 1)
+                {
+                    B1 = 0.85 - (0.05 * ((fc - 28) / 7)); //Calculate Beta_1 due to change of concrete strength
+                    rhoMax = (0.85 * fc / (fy)) * B1 * cdMax; //ACI-318 Code
+                }
                 rhoMin = 0.25 * Math.Sqrt(fc) / fy;
 
                 //Steel design constants
@@ -134,7 +143,16 @@ namespace BeamShapeExplorer
             else 
             {
                 cdMax = ec / (ec + es);
-                rhoMax = (0.36 * fc / (0.87 * fy)) * cdMax;
+                if (building_code == 0)
+                {
+                    rhoMax = (0.36 * fc / (0.87 * fy)) * cdMax; //Indian NBC 
+                }
+                else if (building_code == 1)
+                {
+                    B1 = 0.85 - (0.05 * ((fc - 28) / 7)); //Calculate Beta_1 due to change of concrete strength
+                    rhoMax = (0.85 * fc / (fy)) * B1 * cdMax; //ACI-318 Code
+                }
+
                 rhoMin = Math.Max(0.25 * Math.Sqrt(fc) / fy, 1.4/fy);
 
                 //Steel design constants
@@ -165,7 +183,7 @@ namespace BeamShapeExplorer
             for (int i = 0; i < splitPls.Length; i++) { newMu[i] = Mu[0]; } 
             if (Mu.Count == splitPls.Length) { newMu = Mu.ToArray(); }
 
-            CurveSimplifyOptions crvSimp = new CurveSimplifyOptions() ;
+            CurveSimplifyOptions crvSimp = new CurveSimplifyOptions();
 
             for (int i = 0; i < splitPls.Length; i++)
             {
