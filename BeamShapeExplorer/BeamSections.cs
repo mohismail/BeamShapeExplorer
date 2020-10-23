@@ -67,7 +67,6 @@ namespace BeamShapeExplorer
             double CC = 0;
             double selAs = 0;
             bool fix = false;
-            int code = 0;
             int building_code = 0;
 
 
@@ -79,7 +78,7 @@ namespace BeamShapeExplorer
             if (!DA.GetData(4, ref CC)) return;
             if (!DA.GetData(5, ref selAs)) return;
             if (!DA.GetData(6, ref fix)) return;
-            if (!DA.GetData(7, ref code)) return;
+            if (!DA.GetData(7, ref building_code)) return;
 
             //MaterialProperties mp = null;
             //try
@@ -122,43 +121,45 @@ namespace BeamShapeExplorer
             double cdMax, B1, rhoMax=0, rhoMin = 0;
             double rhoDes, sConst = 0;
 
-            if (code == 1)
+            //if (code == 1)
+            //{
+            //    cdMax = ec / (ec + es);
+            //    if (building_code == 0)
+            //    {
+            //        rhoMax = (0.36 * fc / (0.87 * fy)) * cdMax; //Indian NBC 
+            //    }
+            //    else if (building_code == 1)
+            //    {
+            //        B1 = 0.85 - (0.05 * ((fc - 28) / 7)); //Calculate Beta_1 due to change of concrete strength
+            //        rhoMax = (0.85 * fc / (fy)) * B1 * cdMax; //ACI-318 Code
+            //    }
+            //    rhoMin = 0.25 * Math.Sqrt(fc) / fy;
+
+            //    //Steel design constants
+            //    rhoDes = 0.66 * rhoMax;
+            //    sConst = 0.87 * fy * (1 - 1.005 * rhoDes * (fy / fc));
+            //}
+            //else 
+            //{
+            //}
+
+            cdMax = ec / (ec + es);
+            if (building_code == 0)
             {
-                cdMax = ec / (ec + es);
-                if (building_code == 0)
-                {
-                    rhoMax = (0.36 * fc / (0.87 * fy)) * cdMax; //Indian NBC 
-                }
-                else if (building_code == 1)
-                {
-                    B1 = 0.85 - (0.05 * ((fc - 28) / 7)); //Calculate Beta_1 due to change of concrete strength
-                    rhoMax = (0.85 * fc / (fy)) * B1 * cdMax; //ACI-318 Code
-                }
-                rhoMin = 0.25 * Math.Sqrt(fc) / fy;
-
-                //Steel design constants
-                rhoDes = 0.66 * rhoMax;
-                sConst = 0.87 * fy * (1 - 1.005 * rhoDes * (fy / fc));
+                rhoMax = (0.36 * fc / (0.87 * fy)) * cdMax; //Indian NBC 
             }
-            else 
+            else if (building_code == 1)
             {
-                cdMax = ec / (ec + es);
-                if (building_code == 0)
-                {
-                    rhoMax = (0.36 * fc / (0.87 * fy)) * cdMax; //Indian NBC 
-                }
-                else if (building_code == 1)
-                {
-                    B1 = 0.85 - (0.05 * ((fc - 28) / 7)); //Calculate Beta_1 due to change of concrete strength
-                    rhoMax = (0.85 * fc / (fy)) * B1 * cdMax; //ACI-318 Code
-                }
-
-                rhoMin = Math.Max(0.25 * Math.Sqrt(fc) / fy, 1.4/fy);
-
-                //Steel design constants
-                rhoDes = 0.66 * rhoMax;
-                sConst = 0.87 * fy * (1 - 1.005 * rhoDes * (fy / fc));
+                B1 = 0.85 - (0.05 * ((fc - 28) / 7)); //Calculate Beta_1 due to change of concrete strength
+                rhoMax = (0.85 * fc / (fy)) * B1 * cdMax; //ACI-318 Code
             }
+
+            rhoMin = Math.Max(0.25 * Math.Sqrt(fc) / fy, 1.4/fy);
+
+            //Steel design constants
+            rhoDes = 0.66 * rhoMax;
+            sConst = 0.87 * fy * (1 - 1.005 * rhoDes * (fy / fc));
+      
             
             
             Console.Write(sConst);

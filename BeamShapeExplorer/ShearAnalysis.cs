@@ -63,7 +63,7 @@ namespace BeamShapeExplorer
         /// <param name="DA">The DA object is used to retrieve from inputs and store in outputs.</param>
         protected override void SolveInstance(IGH_DataAccess DA)
         {
-            int building_code = 0;
+            
 
             MaterialProperties mp = null;
             List<double> Mu = new List<double>();
@@ -73,6 +73,7 @@ namespace BeamShapeExplorer
             List<Curve> crvAs = new List<Curve>();
             double CC = 0;
             int M = 0;
+            int building_code = 0;
 
             if (!DA.GetData(0, ref mp)) return;
             if (!DA.GetDataList(1, Mu)) return;
