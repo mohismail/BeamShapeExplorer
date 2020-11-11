@@ -6,13 +6,13 @@ using Rhino.Geometry;
 
 namespace BeamShapeExplorer
 {
-    public class TEST_coderead : GH_Component
+    public class TEST_codeselect : GH_Component
     {
         /// <summary>
         /// Initializes a new instance of the MyComponent1 class.
         /// </summary>
-        public TEST_coderead()
-          : base("Read Code", "Nickname",
+        public TEST_codeselect()
+          : base("Select Code 2", "Nickname",
               "Description",
               "Beam Shape Explorer", "TEST")
         {
@@ -23,6 +23,8 @@ namespace BeamShapeExplorer
         /// </summary>
         protected override void RegisterInputParams(GH_Component.GH_InputParamManager pManager)
         {
+            pManager.AddIntegerParameter("Code", "Code", "Code", GH_ParamAccess.item);
+
         }
 
         /// <summary>
@@ -40,14 +42,26 @@ namespace BeamShapeExplorer
         /// <param name="DA">The DA object is used to retrieve from inputs and store in outputs.</param>
         protected override void SolveInstance(IGH_DataAccess DA)
         {
-            int building_code = 0; string bc = null; 
+            int building_code = 0;
+            
+            if (!DA.GetData(0, ref building_code)) return;
 
-            GH_SettingsServer BCsettings = new GH_SettingsServer("BuildingCode", true);
-            building_code = BCsettings.GetValue("CodeNumber", building_code);
-            bc = BCsettings.GetValue("CodeName", bc); ;
 
+            string bc = null;
+            if (building_code == 0) { bc = "IS"; }
+            else if (building_code == 1) { bc = "ACI"; }
+            else { bc = "NULL"; }
+            
             DA.SetData(0, building_code);
             DA.SetData(1, bc);
+
+            GH_SettingsServer BCsettings = new GH_SettingsServer("BSEBuildingCode", false);
+            BCsettings.Clear();
+            BCsettings.SetValue("CodeNumber", building_code);
+            BCsettings.SetValue("CodeName", bc);
+            BCsettings.WritePersistentSettings();
+            //Grasshopper.Instances.Settings.SetValue(bc);
+
         }
 
         /// <summary>
@@ -68,7 +82,7 @@ namespace BeamShapeExplorer
         /// </summary>
         public override Guid ComponentGuid
         {
-            get { return new Guid("0d13abce-8c7c-434a-8b26-899b83ef4839"); }
+            get { return new Guid("aa7a2c4b-cfaa-4eed-bbaf-ef6a0b82c433"); }
         }
     }
 }
