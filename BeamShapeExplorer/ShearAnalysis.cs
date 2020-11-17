@@ -73,7 +73,13 @@ namespace BeamShapeExplorer
             List<Curve> crvAs = new List<Curve>();
             double CC = 0;
             int M = 0;
-            int building_code = 0;
+
+            int building_code = 0; string bc = null;
+
+            GH_SettingsServer BCsettings = new GH_SettingsServer("BSEBuildingCode", true);
+            building_code = BCsettings.GetValue("CodeNumber", building_code);
+            bc = BCsettings.GetValue("CodeName", bc); ;
+
 
             if (!DA.GetData(0, ref mp)) return;
             if (!DA.GetDataList(1, Mu)) return;
