@@ -70,6 +70,8 @@
     <Compile Include="DesignVs.cs" />
     <Compile Include="LoadEnvelopeFromCurves.cs" />
     <Compile Include="MaterialPropertiesDeconstruct.cs" />
+    <Compile Include="TEST_coderead 2.cs" />
+    <Compile Include="TEST_codeselect 2.cs" />
     <Compile Include="Properties\Resources.Designer.cs">
       <AutoGen>True</AutoGen>
       <DesignTime>True</DesignTime>
