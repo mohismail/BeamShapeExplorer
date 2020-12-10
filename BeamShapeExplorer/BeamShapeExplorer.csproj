@@ -70,8 +70,9 @@
     <Compile Include="DesignVs.cs" />
     <Compile Include="LoadEnvelopeFromCurves.cs" />
     <Compile Include="MaterialPropertiesDeconstruct.cs" />
+    <Compile Include="MatieralPropertiesRead.cs" />
+    <Compile Include="MatierialPropertiesGlobal.cs" />
     <Compile Include="TEST_coderead 2.cs" />
-    <Compile Include="TEST_codeselect 2.cs" />
     <Compile Include="Properties\Resources.Designer.cs">
       <AutoGen>True</AutoGen>
       <DesignTime>True</DesignTime>
@@ -82,6 +83,7 @@
     <Compile Include="SelfWeightEnvelope.cs" />
     <Compile Include="ShearAnalysis.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="TEST_codeselect 2.cs" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="Properties\Resources.resx">
