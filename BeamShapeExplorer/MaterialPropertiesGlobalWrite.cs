@@ -44,7 +44,7 @@ namespace BeamShapeExplorer
         /// </summary>
         protected override void RegisterOutputParams(GH_Component.GH_OutputParamManager pManager)
         {
-          
+
         }
 
         /// <summary>
@@ -85,10 +85,10 @@ namespace BeamShapeExplorer
 
         }
 
-            //DA.SetDataList(0, MP);
-            //DA.SetDataList(1, info);
+        //DA.SetDataList(0, MP);
+        //DA.SetDataList(1, info);
 
-           
+
 
         /// <summary>
         /// Provides an Icon for the component.
@@ -108,8 +108,7 @@ namespace BeamShapeExplorer
         /// </summary>
         public override Guid ComponentGuid
         {
-            get { return new Guid("aa7a2c4b-cfaa-4eed-bbaf-ef6a0b82c434"); }
-            /// Changed the last number from a "3" to a "4"
+            get { return new Guid("dad22d45-4a16-4ed0-bf87-2473483f6bb1"); }
         }
     }
 }

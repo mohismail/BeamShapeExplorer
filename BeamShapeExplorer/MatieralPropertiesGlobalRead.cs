@@ -8,7 +8,7 @@ using BeamShapeExplorer.DataTypes;
 
 namespace BeamShapeExplorer
 {
-    public class MaterialPropertiesReadGlobal  : GH_Component
+    public class MaterialPropertiesReadGlobal : GH_Component
     {
         /// <summary>
         /// Initializes a new instance of the MyComponent1 class.
@@ -103,8 +103,7 @@ namespace BeamShapeExplorer
         /// </summary>
         public override Guid ComponentGuid
         {
-            get { return new Guid("0d13abce-8c7c-434a-8b26-899b83ef4849"); }
-            /// Changed the second to last number from a "3" to a "4"
+            get { return new Guid("5cfa0b96-88ac-4d51-bf8b-e3927bc4fb16"); }
         }
     }
 }
