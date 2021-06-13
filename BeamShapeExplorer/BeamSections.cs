@@ -39,7 +39,6 @@ namespace BeamShapeExplorer
             pManager.AddNumberParameter("Area of Steel (mm2)", "As", "Area of tensile reinforcing steel; if blank, component will estimate based on moment envelope", GH_ParamAccess.item, 0);
 
             pManager.AddBooleanParameter("Constant Area of Steel", "Constant As", "True if the beam will have a constant area of steel", GH_ParamAccess.item, false);
-            pManager.AddIntegerParameter("Concrete Design Code", "DC", "Concrete design code, defaults to Indian Standard 456. (0: ACI 318, 1: IS 456)", GH_ParamAccess.item, 1);
         }
 
         /// <summary>
@@ -67,7 +66,13 @@ namespace BeamShapeExplorer
             double CC = 0;
             double selAs = 0;
             bool fix = false;
-            int code = 0;
+
+     
+            int building_code = 0; string bc = null;
+
+            GH_SettingsServer BCsettings = new GH_SettingsServer("BSEBuildingCode", true);
+            building_code = BCsettings.GetValue("CodeNumber", building_code);
+            bc = BCsettings.GetValue("CodeName", bc); ;
 
 
             if (!DA.GetData(0, ref mp)) return;
@@ -78,7 +83,6 @@ namespace BeamShapeExplorer
             if (!DA.GetData(4, ref CC)) return;
             if (!DA.GetData(5, ref selAs)) return;
             if (!DA.GetData(6, ref fix)) return;
-            if (!DA.GetData(7, ref code)) return;
 
             //MaterialProperties mp = null;
             //try
@@ -118,29 +122,29 @@ namespace BeamShapeExplorer
 
             
             //Code limits for design
-            double cdMax, rhoMax, rhoMin = 0;
+            double cdMax, B1, rhoMax=0, rhoMin = 0;
             double rhoDes, sConst = 0;
 
-            if (code == 1)
+       
+            cdMax = ec / (ec + es);
+            if (building_code == 0)
             {
-                cdMax = ec / (ec + es);
-                rhoMax = (0.36 * fc / (0.87 * fy)) * cdMax;
-                rhoMin = 0.25 * Math.Sqrt(fc) / fy;
-
-                //Steel design constants
-                rhoDes = 0.66 * rhoMax;
-                sConst = 0.87 * fy * (1 - 1.005 * rhoDes * (fy / fc));
+                rhoMax = (0.36 * fc / (0.87 * fy)) * cdMax; //Indian NBC 
             }
-            else 
+            else if (building_code == 1)
             {
-                cdMax = ec / (ec + es);
-                rhoMax = (0.36 * fc / (0.87 * fy)) * cdMax;
-                rhoMin = Math.Max(0.25 * Math.Sqrt(fc) / fy, 1.4/fy);
-
-                //Steel design constants
-                rhoDes = 0.66 * rhoMax;
-                sConst = 0.87 * fy * (1 - 1.005 * rhoDes * (fy / fc));
+                B1 = 0.85 - (0.05 * ((fc - 28) / 7)); //Calculate Beta_1 due to change of concrete strength
+                rhoMax = (0.85 * fc / (fy)) * B1 * cdMax; //ACI-318 Code
             }
+            else
+
+
+            rhoMin = Math.Max(0.25 * Math.Sqrt(fc) / fy, 1.4/fy);
+
+            //Steel design constants
+            rhoDes = 0.66 * rhoMax;
+            sConst = 0.87 * fy * (1 - 1.005 * rhoDes * (fy / fc));
+      
             
             
             Console.Write(sConst);
@@ -165,7 +169,7 @@ namespace BeamShapeExplorer
             for (int i = 0; i < splitPls.Length; i++) { newMu[i] = Mu[0]; } 
             if (Mu.Count == splitPls.Length) { newMu = Mu.ToArray(); }
 
-            CurveSimplifyOptions crvSimp = new CurveSimplifyOptions() ;
+            CurveSimplifyOptions crvSimp = new CurveSimplifyOptions();
 
             for (int i = 0; i < splitPls.Length; i++)
             {
