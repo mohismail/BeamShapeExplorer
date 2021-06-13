@@ -233,18 +233,19 @@ namespace BeamShapeExplorer
             }
 
             DA.SetDataList(0, sectRho);
+            DA.SetDataList(1, bwCrvs);
+            DA.SetDataList(2, sectd);
+            DA.SetDataList(3, rhoMaxs);
+            DA.SetDataList(4, rhoMins);
+
             //DA.SetDataList(1, maxErrors);
             //DA.SetDataList(2, minErrors);
-            DA.SetDataList(1, bwCrvs);
-            DA.SetDataList(2, rhoMaxs);
-            DA.SetDataList(3, rhoMins);
-            DA.SetDataList(4, sectd);
             //DA.SetDataList(5, Us);
             //DA.SetDataList(6, Vs);
             //DA.SetDataList(7, sectusrfC);
             //DA.SetDataList(8, sectvsrfC);
-            DA.SetDataList(5, rhoMaxs);
-            DA.SetDataList(6, rhoMins);
+            //DA.SetDataList(5, rhoMaxs);
+            //DA.SetDataList(6, rhoMins);
 
         }
 
