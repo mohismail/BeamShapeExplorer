@@ -62,10 +62,32 @@ namespace BeamShapeExplorer
 
             List<Brep> brepBeam = new List<Brep>();
 
-            Point3d guide = crvAg[0].PointAtStart;
-            List<Point3d> guides = new List<Point3d>();
+            Curve ref_crvAs = crvAs[0];
+            for(int i = 0; i < crvAs.Count; i++)
+            {
+                Curve crv_copy = crvAs[i].DuplicateCurve();
+                if(crv_copy != null && Curve.DoDirectionsMatch(crv_copy, ref_crvAs) != true)
+                {
+                    crv_copy.Reverse();
+                    crv_copy.Simplify(CurveSimplifyOptions.All, DocumentTolerance(), DocumentAngleTolerance());
+                    crvAs[i] = crv_copy;
+                }
+            }
 
-            Brep[] brepC = Brep.CreateFromLoft(crvAg, Point3d.Unset, Point3d.Unset, LoftType.Normal, false);
+            Curve ref_crvAg = crvAg[0];
+            for (int i = 0; i < crvAg.Count; i++)
+            {
+                Curve crv_copy = crvAg[i].DuplicateCurve();
+                if (crv_copy != null && Curve.DoDirectionsMatch(crv_copy, ref_crvAg) != true)
+                {
+                    crv_copy.Reverse();
+                    crv_copy.Simplify(CurveSimplifyOptions.All, DocumentTolerance(), DocumentAngleTolerance());
+                    crvAg[i] = crv_copy;
+                }
+            }
+
+
+            Brep[] brepC = Brep.CreateFromLoft(crvAg, Point3d.Unset, Point3d.Unset, LoftType.Tight, false);
             Brep clsBrepC = brepC[0].CapPlanarHoles(DocumentTolerance()); brepBeam.Add(clsBrepC);
             double massC = Math.Abs(clsBrepC.GetVolume()) * rhoc;
             double totEEc = massC * EEc;

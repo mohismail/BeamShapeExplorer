@@ -229,11 +229,12 @@ namespace BeamShapeExplorer
             Point3d startAg = new Point3d();
             double newStartAs = 0;
             Point3d startAs = new Point3d();
+
             for (int i = 1; i < AgCrv.Count; i++)
             {
                 if (AgCrv[i] != null && AgCrv[i - 1] != null)
                 {
-                    if (!Curve.DoDirectionsMatch(AgCrv[i], AgCrv[0])) { AgCrv[i].Reverse(); }
+                    //if (!Curve.DoDirectionsMatch(AgCrv[i], AgCrv[0])) { AgCrv[i].Reverse(); }
                     startAg = AgCrv[i - 1].PointAtStart;
                     AgCrv[i].ClosestPoint(startAg, out newStartAg);
                     AgCrv[i].ChangeClosedCurveSeam(newStartAg);
@@ -241,12 +242,11 @@ namespace BeamShapeExplorer
 
                 if (AsCrv[i] != null && AsCrv[i - 1] != null)
                 {
-                    if (!Curve.DoDirectionsMatch(AsCrv[i], AsCrv[0])) { AsCrv[i].Reverse(); }
+                    //if (!Curve.DoDirectionsMatch(AsCrv[i], AsCrv[0])) { AsCrv[i].Reverse(); }
                     startAs = AsCrv[i - 1].PointAtStart;
                     AsCrv[i].ClosestPoint(startAs, out newStartAs);
                     AsCrv[i].ChangeClosedCurveSeam(newStartAs);
                 }
-
             }
 
 
@@ -274,6 +274,24 @@ namespace BeamShapeExplorer
                 AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "One or both outputs are empty, check input loads and geometry!");
                 return;
             }
+
+            if (finalAsCrv.Contains(null))
+            {
+                AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "As is Null!");
+                return;
+            }
+
+            //Curve ref_crvAs = finalAsCrv[0];
+            //for (int i = 0; i < finalAsCrv.Count; i++)
+            //{
+            //    Curve crv_copy = finalAsCrv[i].DuplicateCurve();
+            //    if (crv_copy != null && Curve.DoDirectionsMatch(crv_copy, ref_crvAs) != true)
+            //    {
+            //        crv_copy.Reverse();
+            //        crv_copy.Simplify(CurveSimplifyOptions.All, DocumentTolerance(), DocumentAngleTolerance());
+            //        finalAsCrv[i] = crv_copy;
+            //    }
+            //}
 
             DA.SetDataList(0, AgCrv);
             DA.SetDataList(1, finalAsCrv);

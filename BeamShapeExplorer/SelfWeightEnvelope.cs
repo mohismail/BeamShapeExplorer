@@ -119,7 +119,15 @@ namespace BeamShapeExplorer
 
             Brep[] splitBBrep = smallBBrep.Split(splitPlns, DocumentTolerance());
             double[] sortSplit = new double[splitBBrep.Length];
-            for(int i = 0; i < splitBBrep.Length; i++)
+
+            if (splitBBrep[0] == null)
+            {
+                AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "BREP Split error");
+                return;
+            }
+
+
+            for (int i = 0; i < splitBBrep.Length; i++)
             {
                 splitBBrep[i] = splitBBrep[i].CapPlanarHoles(DocumentTolerance());
                 double xLoc = VolumeMassProperties.Compute(splitBBrep[i]).Centroid.X;
