@@ -16,7 +16,7 @@ namespace BeamShapeExplorer
         public ShapedBeamBuilder()
           : base("Beam Builder", "BBuild",
               "Creates Brep of beam shaped by variable inputs",
-              "Beam Shape Explorer", "Utilities")
+              "Beam Shape Explorer", "Design")
         {
         }
 

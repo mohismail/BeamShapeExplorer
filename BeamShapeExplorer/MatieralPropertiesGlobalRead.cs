@@ -15,8 +15,8 @@ namespace BeamShapeExplorer
         /// </summary>
         public MaterialPropertiesReadGlobal()
          : base("Read MP", "Read MP",
-              "Outputs glboal material properties for structural analysis",
-              "Beam Shape Explorer", "MP Global")
+              "Outputs global material properties for structural analysis",
+              "Beam Shape Explorer", "Global Settings")
         {
         }
 
@@ -94,7 +94,7 @@ namespace BeamShapeExplorer
             {
                 //You can add image files to your project resources and access them like this:
                 // return Resources.IconForThisComponent;
-                return BeamShapeExplorer.Properties.Resources.mpcomp;
+                return BeamShapeExplorer.Properties.Resources.gmpread;
             }
         }
 

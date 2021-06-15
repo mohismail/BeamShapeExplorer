@@ -14,7 +14,7 @@ namespace BeamShapeExplorer
         public LoadEnvelope()
           : base("Uniform Load Envelope", "LE",
               "Provides moment and shear envelope for a uniformly loaded, simply-supported beam",
-              "Beam Shape Explorer", "Configuration")
+              "Beam Shape Explorer", "Loads")
         {
         }
 
@@ -135,7 +135,7 @@ namespace BeamShapeExplorer
             {
                 //You can add image files to your project resources and access them like this:
                 // return Resources.IconForThisComponent;
-                return BeamShapeExplorer.Properties.Resources.loaduni;
+                return BeamShapeExplorer.Properties.Resources.loaduni2;
             }
         }
 

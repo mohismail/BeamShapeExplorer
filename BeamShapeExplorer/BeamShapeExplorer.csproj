@@ -83,7 +83,7 @@
     <Compile Include="SelfWeightEnvelope.cs" />
     <Compile Include="ShearAnalysis.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="TEST_codeselect 2.cs" />
+    <Compile Include="SelectCode.cs" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="Properties\Resources.resx">
@@ -131,6 +131,27 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="Resources\vs.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Resources\bcode.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Resources\ee2.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Resources\loadcrv2.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Resources\loadself2.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Resources\gmpcomp.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Resources\gmpread.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Resources\loaduni2.png" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 

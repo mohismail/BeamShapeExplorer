@@ -16,7 +16,7 @@ namespace BeamShapeExplorer
         public MaterialPropertiesSetGlobal()
           : base("Material Properties Global", " Set MP",
               "Compiles global material properties for structural analysis",
-              "Beam Shape Explorer", "MP Global")
+              "Beam Shape Explorer", "Global Settings")
         {//Grasshopper.Instances.Settings.SetValue(bc);
         }
 
@@ -99,7 +99,7 @@ namespace BeamShapeExplorer
             {
                 //You can add image files to your project resources and access them like this:
                 // return Resources.IconForThisComponent;
-                return BeamShapeExplorer.Properties.Resources.mpcomp;
+                return BeamShapeExplorer.Properties.Resources.gmpcomp;
             }
         }
 

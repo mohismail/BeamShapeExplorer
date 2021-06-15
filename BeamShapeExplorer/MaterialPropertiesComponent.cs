@@ -17,7 +17,7 @@ namespace BeamShapeExplorer
         public MaterialPropertiesComponent()
           : base("Material Properties", "MP",
               "Compiles material properties for structural analysis",
-              "Beam Shape Explorer", "Configuration")
+              "Beam Shape Explorer", "Utilities")
         {
         }
 

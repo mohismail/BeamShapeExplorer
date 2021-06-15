@@ -16,7 +16,7 @@ namespace BeamShapeExplorer
         public SelfWeightEnvelope()
           : base("Load Envelope from Selfweight", "LEw",
               "Provides moment and shear envelope for a beam from selfweight",
-              "Beam Shape Explorer", "Utilities")
+              "Beam Shape Explorer", "Loads")
         {
         }
 
@@ -267,7 +267,7 @@ namespace BeamShapeExplorer
             {
                 //You can add image files to your project resources and access them like this:
                 // return Resources.IconForThisComponent;
-                return BeamShapeExplorer.Properties.Resources.loadself;
+                return BeamShapeExplorer.Properties.Resources.loadself2;
             }
         }
 

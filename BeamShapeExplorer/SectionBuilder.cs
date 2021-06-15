@@ -19,7 +19,7 @@ namespace BeamShapeExplorer
         public SectionBuilder()
           : base("Section Builder", "SBuild",
               "Creates variable section for shaped element",
-              "Beam Shape Explorer", "Utilities")
+              "Beam Shape Explorer", "Design")
         {
         }
 

@@ -16,7 +16,7 @@ namespace BeamShapeExplorer
         public BeamSections()
           : base("Beam Sections", "BS",
               "Extracts steel and concrete sections from given input",
-              "Beam Shape Explorer", "Configuration")
+              "Beam Shape Explorer", "Analysis")
         {
         }
 

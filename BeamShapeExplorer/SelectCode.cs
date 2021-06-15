@@ -12,9 +12,9 @@ namespace BeamShapeExplorer
         /// Initializes a new instance of the MyComponent1 class.
         /// </summary>
         public TEST_codeselect()
-          : base("Select Code 2", "Nickname",
-              "Description",
-              "Beam Shape Explorer", "TEST")
+          : base("Select Code", "Code",
+              "Select building code (0 = IS 456, 1 = ACI 318)",
+              "Beam Shape Explorer", "Global Settings")
         {
         }
 
@@ -23,7 +23,7 @@ namespace BeamShapeExplorer
         /// </summary>
         protected override void RegisterInputParams(GH_Component.GH_InputParamManager pManager)
         {
-            pManager.AddIntegerParameter("Code", "Code", "Code", GH_ParamAccess.item);
+            pManager.AddIntegerParameter("Building Code (0 = IS 456, 1 = ACI 318)", "Code", "Building Code (0 = IS 456, 1 = ACI 318)", GH_ParamAccess.item);
 
         }
 
@@ -32,8 +32,8 @@ namespace BeamShapeExplorer
         /// </summary>
         protected override void RegisterOutputParams(GH_Component.GH_OutputParamManager pManager)
         {
-            pManager.AddIntegerParameter("Code", "Code", "Code", GH_ParamAccess.item);
-            pManager.AddTextParameter("Code", "Code", "Code", GH_ParamAccess.item);
+            //pManager.AddIntegerParameter("Code", "Code", "Code", GH_ParamAccess.item);
+            pManager.AddTextParameter("Selected Code", "Code", "Selected Code", GH_ParamAccess.item);
         }
 
         /// <summary>
@@ -52,8 +52,8 @@ namespace BeamShapeExplorer
             else if (building_code == 1) { bc = "ACI"; }
             else { bc = "NULL"; }
             
-            DA.SetData(0, building_code);
-            DA.SetData(1, bc);
+            //DA.SetData(0, building_code);
+            DA.SetData(0, bc);
 
             GH_SettingsServer BCsettings = new GH_SettingsServer("BSEBuildingCode", false);
             BCsettings.Clear();
@@ -73,7 +73,7 @@ namespace BeamShapeExplorer
             {
                 //You can add image files to your project resources and access them like this:
                 // return Resources.IconForThisComponent;
-                return null;
+                return BeamShapeExplorer.Properties.Resources.bcode;
             }
         }
 

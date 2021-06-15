@@ -16,7 +16,7 @@ namespace BeamShapeExplorer
         public DesignVs()
           : base("Vs Design", "VsD",
               "Design for shear reinforcement, Vs",
-              "Beam Shape Explorer", "Configuration")
+              "Beam Shape Explorer", "Design")
         {
         }
 

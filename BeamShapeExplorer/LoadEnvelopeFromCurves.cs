@@ -14,7 +14,7 @@ namespace BeamShapeExplorer
         public LoadEnvelopeFromCurves()
           : base("Load Envelope from Curves", "LECrv",
               "Provides moment and shear envelope for a beam from the shear and moment diagram",
-              "Beam Shape Explorer", "Configuration")
+              "Beam Shape Explorer", "Loads")
         {
         }
 
@@ -193,7 +193,7 @@ namespace BeamShapeExplorer
             {
                 //You can add image files to your project resources and access them like this:
                 // return Resources.IconForThisComponent;
-                return BeamShapeExplorer.Properties.Resources.loadcrv;
+                return BeamShapeExplorer.Properties.Resources.loadcrv2;
             }
         }
 
