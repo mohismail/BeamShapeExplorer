@@ -1,4 +1,5 @@
-﻿using System;
+﻿
+using System;
 using System.Collections.Generic;
 
 using Grasshopper.Kernel;
@@ -39,13 +40,6 @@ namespace BeamShapeExplorer
         {
             pManager.AddNumberParameter("Distributed Load Envelope (kN/m)", "qw", "Load envelope (kN/m) for selfweight", GH_ParamAccess.list);
             pManager.AddCurveParameter("Split Curve", "qwCrv", "Split curve allowing for line load application in Karamba", GH_ParamAccess.list);
-
-            //pManager.AddVectorParameter("Point Load Envelope (kN)", "Pw", "Equivalent point loads (kN) for selfweight", GH_ParamAccess.list);
-            //pManager.AddCurveParameter("Split Curve", "PwCrv", "Split curve allowing for point load application in Karamba", GH_ParamAccess.list);
-            //pManager.AddPointParameter("Point Loading", "PwPts", "Points locations for equivalent point loads along curve", GH_ParamAccess.list);
-
-            //pManager.AddNumberParameter("Shear Envelope (kN)", "Vw", "Shear envelope for selfweight (kN)", GH_ParamAccess.list);
-            //pManager.AddNumberParameter("Moment Envelope (kN-m)", "Mw", "Moment envelope for selfweight (kN-m)", GH_ParamAccess.list);
 
             pManager.AddCurveParameter("Distributed Load Graph (Actual)", "Actual Load", "Self weight distribution curve", GH_ParamAccess.list);
             pManager.AddCurveParameter("Distributed Load Graph (Average)", "Average Load", "Self weight distribution curve", GH_ParamAccess.list);
@@ -107,10 +101,6 @@ namespace BeamShapeExplorer
             List<Point3d> qwPts = new List<Point3d>();
             List<Point3d> spCrvPts = new List<Point3d>();
 
-
-            //qw.Add(0);
-            //qwPts.Add(spCrv.PointAtStart);
-
             for (int i = 0; i < splitPls.Length; i++)
             {
                 PlaneSurface plSrf = PlaneSurface.CreateThroughBox(splitPls[i], boundBBrep);
@@ -118,15 +108,15 @@ namespace BeamShapeExplorer
             }
 
             Brep[] splitBBrep = smallBBrep.Split(splitPlns, DocumentTolerance());
+
+            //Remove null BREPs
+            int numIdx = Array.IndexOf(splitBBrep, null);
+            List<Brep> tmp = new List<Brep>(splitBBrep);
+            tmp.RemoveAt(numIdx);
+            splitBBrep = tmp.ToArray();
+            
+            //Sorting of BREPs by x-location
             double[] sortSplit = new double[splitBBrep.Length];
-
-            if (splitBBrep[0] == null)
-            {
-                AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "BREP Split error");
-                return;
-            }
-
-
             for (int i = 0; i < splitBBrep.Length; i++)
             {
                 splitBBrep[i] = splitBBrep[i].CapPlanarHoles(DocumentTolerance());
@@ -134,34 +124,13 @@ namespace BeamShapeExplorer
                 sortSplit[i] = xLoc;
             }
 
+            if (splitBBrep[0] == null)
+            {
+                AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "BREP Split error");
+                return;
+            }
+
             Array.Sort(sortSplit, splitBBrep);
-
-            //for (int i = 1; i <= splitPls.Length - 1; i++)
-            //{
-            //    PlaneSurface plSrf = PlaneSurface.CreateThroughBox(splitPls[i], boundBBrep);
-            //    splitPlns.Add(plSrf.ToBrep());
-
-            //    Brep[] split = smallBBrep.Split(plSrf.ToBrep(), DocumentTolerance());
-
-            //    if (split.Length > 0)
-            //    {
-            //        if (split[0].GetVolume() < split[1].GetVolume()) 
-            //        {
-            //            add = split[0].CapPlanarHoles(DocumentTolerance());
-            //            smallBBrep = split[1].CapPlanarHoles(DocumentTolerance());
-            //        }
-            //        else if (split[0].GetVolume() > split[1].GetVolume())
-            //        {
-            //            add = split[1].CapPlanarHoles(DocumentTolerance());
-            //            smallBBrep = split[0].CapPlanarHoles(DocumentTolerance());
-            //        }
-            //        splitBBreps.Add(add); 
-            //    }
-            //    //foreach(Brep b in split) { splitBBreps.Add(b.CapPlanarHoles(DocumentTolerance())); }
-            //}
-            //qwPts.Add(spCrv.PointAtEnd);
-
-            //Point3d qwPt0 = spCrv.PointAt(edge0div[0] * 0.5); qwPts.Add(qwPt0);
 
             for (int i = 0; i < splitBBrep.Length; i++)
             {
@@ -177,7 +146,6 @@ namespace BeamShapeExplorer
             }
 
             List<Curve> graphActual = new List<Curve>();
-            //Curve qwCrv = null;
             Curve qwCrv = Curve.CreateInterpolatedCurve(qwPts, 1);
             graphActual.Add(qwCrv);
 
@@ -215,7 +183,6 @@ namespace BeamShapeExplorer
             List<Vector3d> Pw = new List<Vector3d>();
             foreach(double q in qw) { Pw.Add(new Vector3d(0, 0, -q * dl)); }
 
-            //Brep[] splitBBrep = BBrep.Split(splitPlns, DocumentTolerance());
 
             Double[] PwSpCrvDiv = spCrv.DivideByCount(2 * N, true);
             Curve[] PwSpCrvSplit = spCrv.Split(PwSpCrvDiv);
@@ -241,17 +208,10 @@ namespace BeamShapeExplorer
                 qwGraphAverage.Add(crvAve);
             }
 
-            //Curve[] spCrvTEST = new Curve[1] { spCrv};
-
             for (int i = 0; i < qw.Count; i++) { qw[i] *= -1; }
 
             DA.SetDataList(0, qw);
             DA.SetDataList(1, qwSpCrvSplit);
-
-            //DA.SetDataList(2, Pw);
-            //DA.SetDataList(3, PwSpCrvSplit);
-            //DA.SetDataList(4, spCrvPts);
-
             DA.SetDataList(2, qwGraphActual);
             DA.SetDataList(3, qwGraphAverage);
             DA.SetDataList(4, splitBBrep);
