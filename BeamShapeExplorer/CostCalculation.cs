@@ -8,14 +8,14 @@ using BeamShapeExplorer.DataTypes;
 
 namespace BeamShapeExplorer
 {
-    public class EmbodiedEnergyCalculation : GH_Component
+    public class CostCalculation : GH_Component
     {
         /// <summary>
         /// Initializes a new instance of the MyComponent1 class.
         /// </summary>
-        public EmbodiedEnergyCalculation()
-          : base("Total Embodied Energy", "EE",
-              "Calculated the total embodied energy of a concrete element",
+        public CostCalculation()
+          : base("Total Cost", "Cost",
+              "Calculated the total cost of the element according to the metric defined by user.",
               "Beam Shape Explorer", "Analysis")
         {
         }
@@ -35,7 +35,7 @@ namespace BeamShapeExplorer
         /// </summary>
         protected override void RegisterOutputParams(GH_Component.GH_OutputParamManager pManager)
         {
-            pManager.AddNumberParameter("Embodied Energy (MJ)", "EE", "Total embodied energy (MJ) of a concrete element", GH_ParamAccess.item);
+            pManager.AddNumberParameter("Total cost", "Cost", "Total cost of a concrete element", GH_ParamAccess.item);
             pManager.AddNumberParameter("Total Mass (kg)", "Mass", "Total mass (kg) of the concrete element", GH_ParamAccess.item);
             pManager.AddBrepParameter("Steel and concrete Breps", "breps", "Breps of the final steel and concrete components", GH_ParamAccess.list);
 

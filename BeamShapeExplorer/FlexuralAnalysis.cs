@@ -38,7 +38,7 @@ namespace BeamShapeExplorer
             pManager.AddNumberParameter("Moment Envelope (kN-m)", "Mu", "Applied moments (kN-m) along length of element", GH_ParamAccess.list, 15);
 
             pManager.AddCurveParameter("Concrete Section", "Ag", "Concrete sections to analyze for flexural capacity", GH_ParamAccess.list);
-            pManager.AddCurveParameter("Steel Section", "As", "Steel sections to analyze to flesural capacity", GH_ParamAccess.list);
+            pManager.AddCurveParameter("Steel Section", "As", "Steel sections to analyze to flexural capacity", GH_ParamAccess.list);
             pManager.AddIntegerParameter("Section subdivisions", "m", "Number of cuts to integrate along section depth, defaults to 10", GH_ParamAccess.item, 15);
         }
 
@@ -49,7 +49,7 @@ namespace BeamShapeExplorer
         {
             pManager.AddNumberParameter("Moment Capacity (kN-m)", "Mn", "Moment Capacity (kN-m)", GH_ParamAccess.list);
             //pManager.AddNumberParameter("Moment Capacity Overdesign (%)", "%error", "Percent error of moment capacity, negative if capacity has not met demand", GH_ParamAccess.list);
-            pManager.AddBrepParameter("Compression Area", "Ac", "Area of concrete in compression block, Ac", GH_ParamAccess.list);
+            pManager.AddBrepParameter("Compression Area", "Acomp", "Area of concrete in compression block, Acomp", GH_ParamAccess.list);
 
         }
 

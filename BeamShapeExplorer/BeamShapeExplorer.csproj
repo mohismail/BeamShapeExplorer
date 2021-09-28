@@ -66,12 +66,18 @@
     <Compile Include="MaterialPropertiesComponent.cs" />
     <Compile Include="BeamSections.cs" />
     <Compile Include="DuctilityAnalysis.cs" />
-    <Compile Include="EmbodiedEnergyCalculation.cs" />
+    <Compile Include="CostCalculation.cs" />
     <Compile Include="DesignVs.cs" />
     <Compile Include="LoadEnvelopeFromCurves.cs" />
     <Compile Include="MaterialPropertiesDeconstruct.cs" />
     <Compile Include="MaterialPropertiesGlobalWrite.cs" />
     <Compile Include="MatieralPropertiesGlobalRead.cs" />
+    <Compile Include="IGross.cs" />
+    <Compile Include="ICracked.cs" />
+    <Compile Include="CrackingMoment.cs" />
+    <Compile Include="IEffective.cs" />
+    <Compile Include="DispSS.cs" />
+    <Compile Include="IEffective2.cs" />
     <Compile Include="TEST_coderead 2.cs" />
     <Compile Include="Properties\Resources.Designer.cs">
       <AutoGen>True</AutoGen>

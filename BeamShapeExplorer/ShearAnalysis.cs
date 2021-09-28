@@ -220,14 +220,14 @@ namespace BeamShapeExplorer
                 if (building_code == 0)
                 {
                     if (Double.IsNaN(sectVn)) { sectVn = 0; }
-                    else if (newVs[i] < DocumentTolerance()) { sectVn = Math.Min(sectVcIS, sectVcACI) * 0.5; }
-                    else { sectVn = Math.Min(sectVcIS, sectVcACI) + newVs[i]; }
+                    else if (Math.Abs(newVs[i]) < DocumentTolerance()) { sectVn = Math.Min(sectVcIS, sectVcACI) * 0.5; }
+                    else { sectVn = Math.Min(sectVcIS, sectVcACI) + Math.Abs(newVs[i]); }
                 }
                 else if (building_code == 1)
                 {
                     if (Double.IsNaN(sectVn)) { sectVn = 0; }
-                    else if (newVs[i] < DocumentTolerance()) { sectVn = sectVcACI * 0.5; } //Jonathan
-                    else { sectVn = sectVcACI + newVs[i]; } //Jonathan
+                    else if (Math.Abs(newVs[i]) < DocumentTolerance()) { sectVn = sectVcACI * 0.5; } //Jonathan
+                    else { sectVn = sectVcACI + Math.Abs(newVs[i]); } //Jonathan
                 }
 
                 Vn.Add(sectVn);

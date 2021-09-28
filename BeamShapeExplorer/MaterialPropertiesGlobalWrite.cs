@@ -29,13 +29,13 @@ namespace BeamShapeExplorer
             pManager.AddNumberParameter("Concrete E-modulus (MPa, N/mm2)", "Ec", "Characteristic Young's modulus of concrete (MPa, N/mm2)", GH_ParamAccess.item, 27500);
             pManager.AddNumberParameter("Concrete Maximum Strain (mm/mm)", "εc", "Maximum strain allowed in concrete (mm/mm)", GH_ParamAccess.item, 0.0035);
             pManager.AddNumberParameter("Concrete Density (kg/m3)", "ρc", "Density of concrete (kg/m3)", GH_ParamAccess.item, 2400);
-            pManager.AddNumberParameter("Concrete Embodied Energy Coefficient (MJ/kg)", "EEc", "Embodied energy coefficient of concrete (MJ/kg)", GH_ParamAccess.item, 0.87);
+            pManager.AddNumberParameter("Concrete Cost (unit/kg)", "CostC", "Cost per unit mass of concrete (unit/kg)", GH_ParamAccess.item, 0.87);
 
             pManager.AddNumberParameter("Steel Characteristic Strength (MPa, N/mm2)", "fy", "Characteristic strength of longitudinal reinforcement (MPa, N/mm2)", GH_ParamAccess.item, 415);
             pManager.AddNumberParameter("Steel E-modulus (MPa, N/mm2)", "Es", "Characteristic Young's modulus of steel (MPa, N/mm2)", GH_ParamAccess.item, 205000);
             pManager.AddNumberParameter("Steel Maximum Strain (mm/mm)", "εs", "Maximum strain allowed in steel (mm/mm)", GH_ParamAccess.item, 0.004);
             pManager.AddNumberParameter("Steel Density (kg/m3)", "ρs", "Density of steel (kg/m3)", GH_ParamAccess.item, 8050);
-            pManager.AddNumberParameter("Steel Embodied Energy Coefficient (MJ/kg)", "EEs", "Embodied energy coefficient of steel (MJ/kg)", GH_ParamAccess.item, 30);
+            pManager.AddNumberParameter("Steel Cost (unit/kg)", "CostS", "Cost per unit mass of steel (unit/kg)", GH_ParamAccess.item, 30);
 
         }
 

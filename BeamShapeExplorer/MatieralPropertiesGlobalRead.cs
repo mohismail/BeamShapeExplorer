@@ -70,12 +70,12 @@ namespace BeamShapeExplorer
                 "Ec = " + MP[1] + " MPa",
                 "εc = " + MP[2] + " mm/mm",
                 "ρc = " + MP[3] + " kg/m3",
-                "EEc = " + MP[4] + " MJ/kg",
+                "EEc = " + MP[4] + " unit/kg",
                 "fy = " + MP[5] + " MPa",
                 "Es = " + MP[6] + " MPa",
                 "εs = " + MP[7] + " mm/mm",
                 "ρs = " + MP[8] + " kg/m3",
-                "EEs " + MP[9] + " MJ/kg"
+                "EEs " + MP[9] + " unit/kg"
             };
 
             //DA.SetDataList(0, MP);

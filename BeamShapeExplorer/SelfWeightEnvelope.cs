@@ -112,7 +112,7 @@ namespace BeamShapeExplorer
             //Remove null BREPs
             int numIdx = Array.IndexOf(splitBBrep, null);
             List<Brep> tmp = new List<Brep>(splitBBrep);
-            tmp.RemoveAt(numIdx);
+            if (numIdx >= 0) { tmp.RemoveAt(numIdx); } //If-statement needed for Rhino 6
             splitBBrep = tmp.ToArray();
             
             //Sorting of BREPs by x-location
