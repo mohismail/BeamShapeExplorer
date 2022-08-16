@@ -78,6 +78,7 @@
     <Compile Include="IEffective.cs" />
     <Compile Include="DispSS.cs" />
     <Compile Include="IEffective2.cs" />
+    <Compile Include="FlexAnalysis2.cs" />
     <Compile Include="TEST_coderead 2.cs" />
     <Compile Include="Properties\Resources.Designer.cs">
       <AutoGen>True</AutoGen>
