@@ -76,13 +76,17 @@ namespace BeamShapeExplorer
 
                 //double sectH = AreaMassProperties.Compute(crvAs[i]).Centroid.Z; h.Add(sectH);
                 Brep brepAg = brepsAg[i];
-                Double uMidDom = (brepAg.Faces[0].Domain(0)[1] + brepAg.Faces[0].Domain(0)[0]) / 2;
-                Double vMidDom = (brepAg.Faces[0].Domain(1)[1] + brepAg.Faces[0].Domain(1)[0]) / 2;
 
-                Curve U = brepAg.Faces[0].TrimAwareIsoCurve(0, brepAg.Edges[0].PointAtStart.Z - DocumentTolerance())[0];
-                Curve V = brepAg.Faces[0].TrimAwareIsoCurve(1, 0)[0];
+                //Extract guiding isoline
+                Plane plane = Plane.WorldYZ;
+                BoundingBox bbox = brepAg.GetBoundingBox(true);
+                Line V = bbox.GetEdges()[8];
 
-                double sectH = V.GetLength(); h.Add(sectH);
+                //Correcting isoline direction
+                Vector3d V_dir = V.Direction;
+                if (V_dir.Z > 0) { V.Flip(); }
+
+                double sectH = V.Length; h.Add(sectH);
 
                 double sectMcr = (1000*0.7*Math.Sqrt(fc)*sectIg/(sectH+sectXu)); Mcr.Add(sectMcr);
             }

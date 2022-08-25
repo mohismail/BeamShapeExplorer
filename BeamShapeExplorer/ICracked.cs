@@ -71,7 +71,7 @@ namespace BeamShapeExplorer
             List<double> xc = new List<double>();
             List<double> Icr = new List<double>();
 
-            List<Curve> crvB = new List<Curve>();
+            List<Line> crvB = new List<Line>();
 
             for (int i = 0; i < crvAs.Count; i++)
             {
@@ -80,14 +80,20 @@ namespace BeamShapeExplorer
                 
                 Brep srfAci = srfAc[i];
 
-                Double uMidDom = (srfAci.Faces[0].Domain(0)[1] + srfAci.Faces[0].Domain(0)[0]) / 2;
-                Double vMidDom = (srfAci.Faces[0].Domain(1)[1] + srfAci.Faces[0].Domain(1)[0]) / 2;
+                //Extract guiding isoline
+                Plane plane = Plane.WorldYZ;
+                BoundingBox bbox = srfAci.GetBoundingBox(true);
+                Line V = bbox.GetEdges()[8];
+                Line U = bbox.GetEdges()[1];
 
-                Curve U = srfAci.Faces[0].TrimAwareIsoCurve(0, srfAci.Edges[0].PointAtStart.Z-DocumentTolerance())[0];
-                Curve V = srfAci.Faces[0].TrimAwareIsoCurve(1, 0)[0];
+                //Correcting isoline direction
+                Vector3d V_dir = V.Direction;
+                if (V_dir.Z > 0) { V.Flip(); }
+                Vector3d U_dir = U.Direction;
+                if (U_dir.X > 0) { U.Flip(); }
 
-                double sectB = U.GetLength();
-                double sectXc = V.GetLength();
+                double sectB = U.Length;
+                double sectXc = V.Length;
 
                 double Iconc = (sectB * Math.Pow(sectXc, 3)) / 3;
                 double sectIcr = Iconc + (n - 1) * sectAs * Math.Pow((sectD - sectXc), 2);
