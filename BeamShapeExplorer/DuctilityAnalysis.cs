@@ -141,8 +141,6 @@ namespace BeamShapeExplorer
                 Double vMidDom = (srfAg.Domain(1)[1] + srfAg.Domain(1)[0]) / 2;
                 Double uSrfC = srfAg.Domain(0)[1] - srfAg.Domain(0)[0];
                 Double vSrfC = srfAg.Domain(1)[1] - srfAg.Domain(1)[0]; //Works fine for bw //Jonathan
-                //Double uSrfC = srfAg.Domain(0)[1] - srfAg.Domain(0)[0] - srfAs.Domain(1)[0];
-                //Double vSrfC = srfAg.Domain(1)[1] - srfAg.Domain(1)[0] - srfAs.Domain(0)[1];
 
                 //Correction of U and V curve extraction
                 Curve U0 = srfAg.IsoCurve(0, vMidDom);

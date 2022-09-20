@@ -136,6 +136,7 @@ namespace BeamShapeExplorer
                 //Correcting isoline direction
                 Vector3d V_dir = V.Direction;
                 if (V_dir.Z > 0) { V.Flip(); }
+                if (Mu[i] > 0) { V.Flip(); } //positive moment correction
 
                 //Extract cutting planes
                 double[] t = new double[M];
