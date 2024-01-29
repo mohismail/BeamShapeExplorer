@@ -141,7 +141,7 @@ namespace BeamShapeExplorer
 
             rhoMin = Math.Max(0.25 * Math.Sqrt(fc) / fy, 1.4/fy);
 
-            //Steel design constants
+            //Steel design constants //
             rhoDes = 0.66 * rhoMax;
             sConst = 0.87 * fy * (1 - 1.005 * rhoDes * (fy / fc));
       

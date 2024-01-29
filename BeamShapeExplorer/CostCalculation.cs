@@ -90,12 +90,12 @@ namespace BeamShapeExplorer
             Brep[] brepC = Brep.CreateFromLoft(crvAg, Point3d.Unset, Point3d.Unset, LoftType.Tight, false);
             Brep clsBrepC = brepC[0].CapPlanarHoles(DocumentTolerance()); brepBeam.Add(clsBrepC);
             double massC = Math.Abs(clsBrepC.GetVolume()) * rhoc;
-            double totEEc = massC * EEc;
+            double totEEc = Math.Abs(massC * EEc);
 
             Brep[] brepS = Brep.CreateFromLoft(crvAs, Point3d.Unset, Point3d.Unset, LoftType.Normal, false);
             Brep clsBrepS = brepS[0].CapPlanarHoles(DocumentTolerance()); brepBeam.Add(clsBrepS);
             double massS = Math.Abs(clsBrepS.GetVolume()) * rhos;
-            double totEEs = massS * EEs;
+            double totEEs = Math.Abs(massS * EEs);
 
             double totVol = clsBrepS.GetVolume() + clsBrepC.GetVolume();
             double totMass = massC + massS;
