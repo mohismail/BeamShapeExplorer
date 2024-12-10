@@ -5,6 +5,7 @@ using Grasshopper.Kernel;
 using Rhino.Geometry;
 
 using BeamShapeExplorer.DataTypes;
+using System.Collections;
 
 namespace BeamShapeExplorer
 {
@@ -154,6 +155,11 @@ namespace BeamShapeExplorer
 
             Curve edge0 = spCrv;
             Double[] edge0div = edge0.DivideByCount(N - 1, true);
+
+            //fixing tolerance issue at edges of spancrv, beam section at start and end
+            edge0div[0] = edge0div[0] + DocumentTolerance();
+            edge0div[N - 1] = edge0div[N - 1] - DocumentTolerance();
+
             //Double[] edge0div = edge0.DivideByLength(N, true);
             Plane[] splitPls = edge0.GetPerpendicularFrames(edge0div);
 
@@ -169,7 +175,7 @@ namespace BeamShapeExplorer
             for (int i = 0; i < splitPls.Length; i++) { newMu[i] = Mu[0]; } 
             if (Mu.Count == splitPls.Length) { newMu = Mu.ToArray(); }
 
-            CurveSimplifyOptions crvSimp = new CurveSimplifyOptions();
+            //CurveSimplifyOptions crvSimp = new CurveSimplifyOptions();
 
             for (int i = 0; i < splitPls.Length; i++)
             {
@@ -201,10 +207,12 @@ namespace BeamShapeExplorer
                     areaAs = (1000000 * Math.Abs(newMu[i])) / (sConst * d * 1000); //As in mm2
                 }
                 else { areaAs = selAs; }
-                
+
+                if (areaAs <= DocumentTolerance()) { areaAs = DocumentTolerance(); } //insert correction for when area is equal to 0
+
                 double radAs = Math.Sqrt(areaAs / Math.PI) / 1000; //radius in m
 
-                if (radAs <= DocumentTolerance()) { radAs = DocumentTolerance(); } //insert correction for when radius is equal to 0
+                //if (radAs <= DocumentTolerance()) { radAs = DocumentTolerance(); } //insert correction for when radius is equal to 0
 
                 Point3d origin = V.PointAtLength(CC / 1000);
                 origins.Add(origin);
@@ -217,13 +225,20 @@ namespace BeamShapeExplorer
                 AsCrvArea[i] = areaAs;
             }
 
-
+            Point3d testPt = new Point3d(0, 0, 0);
             double startAg0 = 0;
-            AgCrv[0].ClosestPoint(new Point3d(0, 0, 0), out startAg0);
-            AgCrv[0].ChangeClosedCurveSeam(startAg0);
             double startAs0 = 0;
-            AgCrv[0].ClosestPoint(new Point3d(0, 0, 0), out startAs0);
-            AgCrv[0].ChangeClosedCurveSeam(startAs0);
+
+            if (AgCrv[0] != null)
+            {
+                AgCrv[0].ClosestPoint(testPt, out startAg0); //BREAK - no item at start of list...
+                AgCrv[0].ChangeClosedCurveSeam(startAg0);
+            }
+            if (AsCrv[0] != null)
+            {
+                AsCrv[0].ClosestPoint(testPt, out startAs0);
+                AsCrv[0].ChangeClosedCurveSeam(startAs0);
+            }
 
             double newStartAg = 0;
             Point3d startAg = new Point3d();
