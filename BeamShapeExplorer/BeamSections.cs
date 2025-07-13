@@ -179,8 +179,31 @@ namespace BeamShapeExplorer
 
             for (int i = 0; i < splitPls.Length; i++)
             {
+                // Curve[] ag = Brep.CreateContourCurves(BBrep, splitPls[i]);
+                // Brep[] brepAg = Brep.CreatePlanarBreps(ag, DocumentTolerance());
+                // Surface srfAg = brepAg[0].Faces[0];
+               
+                // Try to get contour curves at this section
                 Curve[] ag = Brep.CreateContourCurves(BBrep, splitPls[i]);
+
+                // Check if we actually got any curves
+                if (ag == null || ag.Length == 0)
+                {
+                    AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, $"No contour curve could be created at section {i}. Skipping this one.");
+                    continue; // Skip to the next section
+                }
+
+                // Try to create a surface (BRep) from that curve
                 Brep[] brepAg = Brep.CreatePlanarBreps(ag, DocumentTolerance());
+
+                // Check if that worked
+                if (brepAg == null || brepAg.Length == 0 || brepAg[0].Faces.Count == 0)
+                {
+                    AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, $"No planar surface could be created from section {i}. Skipping this one.");
+                    continue; // Skip to the next section
+                }
+
+                // If we made it here, we’re safe!
                 Surface srfAg = brepAg[0].Faces[0];
 
                 Curve ag0 = ag[0].Simplify(CurveSimplifyOptions.All, DocumentTolerance(), DocumentAngleTolerance());
