@@ -68,7 +68,7 @@ namespace BeamShapeExplorer
             double selAs = 0;
             bool fix = false;
 
-     
+
             int building_code = 0; string bc = null;
 
             GH_SettingsServer BCsettings = new GH_SettingsServer("BSEBuildingCode", true);
@@ -121,12 +121,12 @@ namespace BeamShapeExplorer
 
             //double fc = mp.FC;
 
-            
+
             //Code limits for design
-            double cdMax, B1, rhoMax=0, rhoMin = 0;
+            double cdMax, B1, rhoMax = 0, rhoMin = 0;
             double rhoDes, sConst = 0;
 
-       
+
             cdMax = ec / (ec + es);
             if (building_code == 0)
             {
@@ -140,14 +140,14 @@ namespace BeamShapeExplorer
             else
 
 
-            rhoMin = Math.Max(0.25 * Math.Sqrt(fc) / fy, 1.4/fy);
+                rhoMin = Math.Max(0.25 * Math.Sqrt(fc) / fy, 1.4 / fy);
 
             //Steel design constants //
             rhoDes = 0.66 * rhoMax;
             sConst = 0.87 * fy * (1 - 1.005 * rhoDes * (fy / fc));
-      
-            
-            
+
+
+
             Console.Write(sConst);
 
             //Extract beam sections
@@ -172,41 +172,19 @@ namespace BeamShapeExplorer
 
             //for testing with single moment at all points
             double[] newMu = new double[splitPls.Length];
-            for (int i = 0; i < splitPls.Length; i++) { newMu[i] = Mu[0]; } 
+            for (int i = 0; i < splitPls.Length; i++) { newMu[i] = Mu[0]; }
             if (Mu.Count == splitPls.Length) { newMu = Mu.ToArray(); }
 
             //CurveSimplifyOptions crvSimp = new CurveSimplifyOptions();
 
             for (int i = 0; i < splitPls.Length; i++)
             {
-                // Curve[] ag = Brep.CreateContourCurves(BBrep, splitPls[i]);
-                // Brep[] brepAg = Brep.CreatePlanarBreps(ag, DocumentTolerance());
-                // Surface srfAg = brepAg[0].Faces[0];
-               
-                // Try to get contour curves at this section
                 Curve[] ag = Brep.CreateContourCurves(BBrep, splitPls[i]);
-
-                // Check if we actually got any curves
-                if (ag == null || ag.Length == 0)
-                {
-                    AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, $"No contour curve could be created at section {i}. Skipping this one.");
-                    continue; // Skip to the next section
-                }
-
-                // Try to create a surface (BRep) from that curve
                 Brep[] brepAg = Brep.CreatePlanarBreps(ag, DocumentTolerance());
-
-                // Check if that worked
-                if (brepAg == null || brepAg.Length == 0 || brepAg[0].Faces.Count == 0)
-                {
-                    AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, $"No planar surface could be created from section {i}. Skipping this one.");
-                    continue; // Skip to the next section
-                }
-
-                // If we made it here, we’re safe!
                 Surface srfAg = brepAg[0].Faces[0];
 
-                Curve ag0 = ag[0].Simplify(CurveSimplifyOptions.All, DocumentTolerance(), DocumentAngleTolerance());
+                Curve ag0 = ag[0];
+                    //.Simplify(CurveSimplifyOptions.All, DocumentTolerance(), DocumentAngleTolerance());
 
                 AgCrv.Add(ag0);
 
@@ -296,9 +274,9 @@ namespace BeamShapeExplorer
             double radAsMax = Math.Sqrt(AsCrvAreaMax / Math.PI) / 1000; //radius in m
             Curve AsCrvMax = AsCrvArray[AsCrvArray.Length - 1];
 
-            if(fix != false)
+            if (fix != false)
             {
-                for(int i = 0; i < AsCrv.Count; i++)
+                for (int i = 0; i < AsCrv.Count; i++)
                 {
                     Circle newCrcAs = new Circle(planesAg[i], origins[i], radAsMax);
                     Curve newCrvAs = NurbsCurve.CreateFromCircle(newCrcAs);

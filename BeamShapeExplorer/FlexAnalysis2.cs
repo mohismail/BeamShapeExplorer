@@ -30,7 +30,7 @@ namespace BeamShapeExplorer
             pManager.AddGenericParameter("Material Properties", "MP", "Properties for steel and concrete materials", GH_ParamAccess.item);
             pManager.AddNumberParameter("Moment Envelope (kN-m)", "Mu", "Applied moments (kN-m) along length of element", GH_ParamAccess.list, 15);
 
-            pManager.AddBrepParameter("Concrete Section", "Ag", "Concrete sections to analyze for flexural capacity", GH_ParamAccess.list);
+            pManager.AddCurveParameter("Concrete Section", "Ag", "Concrete sections to analyze for flexural capacity", GH_ParamAccess.list);
             pManager.AddCurveParameter("Steel Section", "As", "Steel sections to analyze to flexural capacity", GH_ParamAccess.list);
             pManager.AddIntegerParameter("Section subdivisions", "m", "Number of cuts to integrate along section depth, defaults to 10", GH_ParamAccess.item, 15);
         }
@@ -55,7 +55,7 @@ namespace BeamShapeExplorer
             //Map out inputs
             MaterialProperties mp = null;
             List<double> Mu = new List<double>();
-            List<Brep> srfAg = new List<Brep>();
+            List<Curve> srfAg = new List<Curve>();
             List<Curve> crvAs = new List<Curve>();
             int M = 0;
             int building_code = 0; string bc = null;
@@ -112,6 +112,7 @@ namespace BeamShapeExplorer
 
             //Create planar Breps from input curves
             Brep[] brepsAs = Brep.CreatePlanarBreps(crvAs, tol);
+            Brep[] brepsAg = Brep.CreatePlanarBreps(srfAg, tol);
 
             //Initialize lists
             List<double> Mn = new List<double>();
@@ -125,7 +126,7 @@ namespace BeamShapeExplorer
             //Actual design and calculations
             for (int i = 0; i < srfAg.Count; i++)
             {
-                Brep brepAg = srfAg[i];
+                Brep brepAg = brepsAg[i];
                 Brep brepAs = brepsAs[i];
 
                 //Extract guiding isoline
