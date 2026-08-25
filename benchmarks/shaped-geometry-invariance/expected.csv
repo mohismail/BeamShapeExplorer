@@ -1,0 +1,11 @@
+benchmark_id,case_id,expectation_class,metric,expected_value,unit,atol,rtol,expected_current_status,reference_basis
+shaped-geometry-invariance,canonical,geometry,section_area,0.348,m2,1e-9,1e-8,PASS,shoelace polygon
+shaped-geometry-invariance,canonical,geometry,centroid_y,0,m,1e-10,1e-9,PASS,shoelace polygon
+shaped-geometry-invariance,canonical,geometry,centroid_z,-0.334482758620690,m,1e-10,1e-9,PASS,shoelace polygon
+shaped-geometry-invariance,canonical,geometry,I_about_y_centroid,0.0102062068965517,m4,1e-11,1e-8,PASS,polygon integral
+shaped-geometry-invariance,canonical,geometry,I_about_z_centroid,0.0109472,m4,1e-11,1e-8,PASS,polygon integral
+shaped-geometry-invariance,canonical,geometry,beam_volume,2.088,m3,1e-8,1e-8,PASS,area times span
+shaped-geometry-invariance,canonical,characterization,Mcr,170.176534883025,kN-m,0.001,1e-7,PASS,current canonical-origin formula
+shaped-geometry-invariance,translated-plus-1z,characterization,Mcr,35.7046135858118,kN-m,0.001,1e-7,PASS,current coordinate-dependent formula
+shaped-geometry-invariance,canonical,corrected_acceptance,Mcr,170.176534883025,kN-m,0.001,1e-7,PASS,section-relative extreme-fiber distance
+shaped-geometry-invariance,translated-plus-1z,corrected_acceptance,Mcr,170.176534883025,kN-m,0.001,1e-7,FAIL,rigid-translation invariance

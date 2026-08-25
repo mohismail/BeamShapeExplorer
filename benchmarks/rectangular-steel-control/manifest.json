@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "benchmark_id": "rectangular-steel-control",
+  "title": "Rectangular steel flexural control",
+  "claim_level": "BSE_RAW_AND_INDEPENDENT_REFERENCE",
+  "rhino_version": "8",
+  "model_units": "m",
+  "absolute_tolerance_m": 1e-6,
+  "angle_tolerance_deg": 0.1,
+  "inputs": {
+    "section": {
+      "width_m": 0.3,
+      "height_m": 0.6,
+      "top_z_m": 0.0,
+      "bottom_z_m": -0.6
+    },
+    "reinforcement": {
+      "area_mm2": 2000.0,
+      "area_m2": 0.002,
+      "centroid_z_m": -0.56,
+      "circle_radius_m": 0.0252313252202016
+    },
+    "material": {
+      "fc_MPa": 30.0,
+      "Ec_MPa": 27500.0,
+      "ec": 0.0035,
+      "rhoC_kg_m3": 2400.0,
+      "CostC_unit_kg": 0.87,
+      "fy_MPa": 500.0,
+      "Es_MPa": 205000.0,
+      "es": 0.004,
+      "rhoS_kg_m3": 8050.0,
+      "CostS_unit_kg": 30.0
+    },
+    "Mu_kNm": -100.0,
+    "subdivisions": 100,
+    "code_cases": [
+      {"code_id": 0, "label": "IS_UNSPECIFIED_EDITION"},
+      {"code_id": 1, "label": "ACI_UNSPECIFIED_EDITION"}
+    ]
+  },
+  "construction": [
+    "Create a closed World-YZ rectangle with Y limits -0.15 and 0.15 m and Z limits -0.6 and 0 m.",
+    "Create a World-YZ circle centered at (0,0,-0.56) with radius 0.0252313252202016 m.",
+    "Connect all ten explicit inputs to Material Properties; do not use global material settings.",
+    "Connect MP, Mu=[-100], rectangle Ag, circle As, and m=100 to Flexural Analysis.",
+    "Set Select Code=0, recompute, and export code-0 observations.",
+    "Set Select Code=1, recompute, and export code-1 observations.",
+    "Capture Mn, Acomp area, and Acomp bounding-box depth for each code."
+  ],
+  "gates": {
+    "finite": "Every numeric output is finite.",
+    "cardinality": "Each code case produces one row per metric.",
+    "characterization": "Current implementation matches characterization rows.",
+    "corrected_acceptance": "A corrected implementation matches equation-family reference rows."
+  }
+}
+

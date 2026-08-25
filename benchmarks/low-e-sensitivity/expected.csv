@@ -1,0 +1,26 @@
+benchmark_id,case_id,expectation_class,metric,expected_value,unit,atol,rtol,expected_current_status,reference_basis
+low-e-sensitivity,Es-50,characterization,c,0.1,m,1e-12,1e-9,PASS,transformed-section neutral axis supplied to component
+low-e-sensitivity,Es-50,characterization,Icr,0.000370000000000000,m4,1e-12,1e-9,PASS,current formula
+low-e-sensitivity,Es-50,characterization,Ieff_Branson,0.00188506172839506,m4,1e-12,1e-9,PASS,current formula
+low-e-sensitivity,Es-50,characterization,Ieff_BG,0.000818802075197341,m4,1e-12,1e-9,PASS,current formula
+low-e-sensitivity,Es-50,corrected_acceptance,Icr,0.000775530516476973,m4,1e-12,1e-9,FAIL,transformed cracked section
+low-e-sensitivity,Es-75,characterization,c,0.119755879531208,m,1e-12,1e-9,PASS,transformed-section neutral axis supplied to component
+low-e-sensitivity,Es-75,characterization,Icr,0.000727077553126798,m4,1e-12,1e-9,PASS,current formula
+low-e-sensitivity,Es-75,characterization,Ieff_Branson,0.00216720272257071,m4,1e-12,1e-9,PASS,current formula
+low-e-sensitivity,Es-75,characterization,Ieff_BG,0.00148776870701541,m4,1e-12,1e-9,PASS,current formula
+low-e-sensitivity,Es-75,corrected_acceptance,Icr,0.00109809333423819,m4,1e-12,1e-9,FAIL,transformed cracked section
+low-e-sensitivity,Es-100,characterization,c,0.135696337817243,m,1e-12,1e-9,PASS,transformed-section neutral axis supplied to component
+low-e-sensitivity,Es-100,characterization,Icr,0.00105088617966853,m4,1e-12,1e-9,PASS,current formula
+low-e-sensitivity,Es-100,characterization,Ieff_Branson,0.00242593224989020,m4,1e-12,1e-9,PASS,current formula
+low-e-sensitivity,Es-100,characterization,Ieff_BG,0.00201804962939060,m4,1e-12,1e-9,PASS,current formula
+low-e-sensitivity,Es-100,corrected_acceptance,Icr,0.00139524226161856,m4,1e-12,1e-9,FAIL,transformed cracked section
+low-e-sensitivity,Es-150,characterization,c,0.161031729828177,m,1e-12,1e-9,PASS,transformed-section neutral axis supplied to component
+low-e-sensitivity,Es-150,characterization,Icr,0.00162794541089730,m4,1e-12,1e-9,PASS,current formula
+low-e-sensitivity,Es-150,characterization,Ieff_Branson,0.00289373936322403,m4,1e-12,1e-9,PASS,current formula
+low-e-sensitivity,Es-150,characterization,Ieff_BG,0.00283416499803284,m4,1e-12,1e-9,PASS,current formula
+low-e-sensitivity,Es-150,corrected_acceptance,Icr,0.00193212959072914,m4,1e-12,1e-9,FAIL,transformed cracked section
+low-e-sensitivity,Es-205,characterization,c,0.182887916124172,m,1e-12,1e-9,PASS,transformed-section neutral axis supplied to component
+low-e-sensitivity,Es-205,characterization,Icr,0.00218405494130399,m4,1e-12,1e-9,PASS,current formula
+low-e-sensitivity,Es-205,characterization,Ieff_Branson,0.00335297693400404,m4,1e-12,1e-9,PASS,current formula
+low-e-sensitivity,Es-205,characterization,Ieff_BG,0.00351322379441631,m4,1e-12,1e-9,PASS,current formula
+low-e-sensitivity,Es-205,corrected_acceptance,Icr,0.00245577262311488,m4,1e-12,1e-9,FAIL,transformed cracked section

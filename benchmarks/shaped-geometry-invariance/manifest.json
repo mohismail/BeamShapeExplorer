@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "benchmark_id": "shaped-geometry-invariance",
+  "title": "Shaped section geometry and translation invariance",
+  "claim_level": "BSE_RAW_AND_INDEPENDENT_REFERENCE",
+  "rhino_version": "8",
+  "model_units": "m",
+  "absolute_tolerance_m": 1e-6,
+  "angle_tolerance_deg": 0.1,
+  "inputs": {
+    "section_builder": {
+      "b_m": 0.8,
+      "h_m": 0.6,
+      "VPx": [0.5, 0.7, 1.0],
+      "VPy": [0.0, 0.5, 1.0]
+    },
+    "span_m": 6.0,
+    "station_count": 4,
+    "translation_xyz_m": [0.0, 0.0, 1.0],
+    "fc_MPa": 40.0,
+    "reinforcement_area_m2": 0.002,
+    "reinforcement_centroid_z_m": -0.55
+  },
+  "expected_polygon_yz_m": [
+    [-0.2, 0.0],
+    [-0.28, -0.3],
+    [-0.4, -0.6],
+    [0.4, -0.6],
+    [0.28, -0.3],
+    [0.2, 0.0]
+  ],
+  "construction": [
+    "Connect b=0.8, h=0.6, VPx=[0.5,0.7,1], and VPy=[0,0.5,1] to Section Builder.",
+    "Verify half-section points (Y,Z): (-0.2,0), (-0.28,-0.3), (-0.4,-0.6).",
+    "Duplicate VSect four times into one ordered list and connect Span=6 to Beam Builder.",
+    "Measure section area/centroid/inertia and beam volume with core Grasshopper components.",
+    "Create a reinforcement circle of area 0.002 m2 centered at Z=-0.55 m.",
+    "Connect the canonical section and circle to Cracking Moment.",
+    "Translate both curves by +1 m in Z and connect them to a second Cracking Moment.",
+    "Export canonical and translated observations without rotating the benchmark."
+  ],
+  "gates": {
+    "geometry": "Section is closed, planar, valid, non-self-intersecting, with six unique vertices.",
+    "beam": "Beam Builder returns one valid closed Brep with analytic volume.",
+    "characterization": "Current coordinate-dependent Mcr values match characterization rows.",
+    "corrected_acceptance": "Corrected Mcr is invariant under translation within rtol 1e-7."
+  }
+}
+
