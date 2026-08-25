@@ -1,0 +1,11 @@
+benchmark_id,case_id,expectation_class,metric,expected_value,unit,atol,rtol,expected_current_status,reference_basis
+rectangular-steel-control,code-0-is,characterization,Acomp_area,0.081,m2,1e-9,1e-8,PASS,current discrete first-cut behavior
+rectangular-steel-control,code-0-is,characterization,Acomp_depth,0.27,m,1e-9,1e-8,PASS,current m=100 behavior
+rectangular-steel-control,code-0-is,characterization,Mn,369.75,kN-m,0.001,1e-8,PASS,current mixed implementation
+rectangular-steel-control,code-1-aci,characterization,Acomp_area,0.081,m2,1e-9,1e-8,PASS,current retained IS compression target
+rectangular-steel-control,code-1-aci,characterization,Acomp_depth,0.27,m,1e-9,1e-8,PASS,current m=100 behavior
+rectangular-steel-control,code-1-aci,characterization,Mn,425.0,kN-m,0.001,1e-8,PASS,current mixed implementation
+rectangular-steel-control,code-0-is,corrected_acceptance,xu,0.268518518518519,m,1e-9,1e-9,FAIL,implemented IS equation family with 0.42xu resultant
+rectangular-steel-control,code-0-is,corrected_acceptance,Mn,389.083333333333,kN-m,0.001,1e-9,FAIL,implemented IS equation family
+rectangular-steel-control,code-1-aci,corrected_acceptance,a,0.130718954248366,m,1e-9,1e-9,FAIL,ACI rectangular nominal block equation family
+rectangular-steel-control,code-1-aci,corrected_acceptance,Mn,494.640522875817,kN-m,0.001,1e-9,FAIL,ACI rectangular nominal block equation family

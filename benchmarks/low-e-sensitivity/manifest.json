@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "benchmark_id": "low-e-sensitivity",
+  "title": "Low-modulus reinforcement serviceability sensitivity",
+  "claim_level": "BSE_RAW_AND_INDEPENDENT_REFERENCE",
+  "rhino_version": "8",
+  "model_units": "m",
+  "absolute_tolerance_m": 1e-6,
+  "angle_tolerance_deg": 0.1,
+  "inputs": {
+    "section_width_m": 0.3,
+    "section_height_m": 0.6,
+    "section_top_z_m": 0.0,
+    "reinforcement_area_m2": 0.002,
+    "reinforcement_centroid_z_m": -0.55,
+    "fc_MPa": 40.0,
+    "Ec_MPa": 30000.0,
+    "fy_MPa": 500.0,
+    "ec": 0.0035,
+    "es": 0.004,
+    "Mcr_reference_kNm": 79.6893970362431,
+    "Mu_kNm": 119.534095554365,
+    "Es_GPa": [50, 75, 100, 150, 205]
+  },
+  "construction": [
+    "Create the 0.3 by 0.6 m World-YZ rectangle with top at Z=0.",
+    "Create a reinforcement circle of area 0.002 m2 centered at Z=-0.55 m.",
+    "For each Es, solve b*c^2/2 = n*As*(d-c) independently and create rectangular Acomp from Z=0 to Z=-c.",
+    "Create a local Material Properties component for each Es and supply every input explicitly.",
+    "Connect MP, Ag, As, independent Acomp, and Mu to IEffective2 Method=0 and Method=1.",
+    "Do not connect Acomp from Flexural Analysis.",
+    "Export c, Icr, Mcr, and Ieff for both methods."
+  ],
+  "gates": {
+    "finite": "Every output is finite and positive.",
+    "monotonic": "c and raw effective inertias increase strictly with Es.",
+    "characterization": "Raw component values match characterization rows.",
+    "corrected_acceptance": "Corrected cracked-section values match transformed-section references.",
+    "translation": "Rigid translation does not alter inertia or Mcr after correction."
+  }
+}
+
