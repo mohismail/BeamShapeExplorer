@@ -76,6 +76,11 @@
     <Compile Include="IGross.cs" />
     <Compile Include="Optimization\MiniJson.cs" />
     <Compile Include="Optimization\OptimizationSampler.cs" />
+    <Compile Include="Optimization\GhUtil.cs" />
+    <Compile Include="Optimization\PlanSampling.cs" />
+    <Compile Include="Optimization\SamplingPlan.cs" />
+    <Compile Include="Optimization\SamplingPlanComponent.cs" />
+    <Compile Include="Optimization\SobolDirectionNumbers.cs" />
     <Compile Include="ICracked.cs" />
     <Compile Include="CrackingMoment.cs" />
     <Compile Include="IEffective.cs" />

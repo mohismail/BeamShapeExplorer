@@ -4,7 +4,7 @@ This tool runs many constrained shape optimizations of a Grasshopper definition 
 results to a CSV file. It follows the sample-collection method in the BSE *Accessible design
 methods* paper, split into two separate steps:
 
-1. **Sampling plan** (`sampling_plan.py`): draw design-input samples (span, loads, f'c, …)
+1. **Sampling plan** (the **Sampling Plan** component, or `sampling_plan.py`): draw design-input samples (span, loads, f'c, …)
    inside their bounds and pick a start point for each run. The default is **Latin Hypercube
    Sampling (LHS)**, as in the paper; other sampling methods are available (see
    [Sampling methods](#sampling-methods)). The plan is saved as a CSV that you can review, plot,
@@ -16,13 +16,14 @@ methods* paper, split into two separate steps:
    the final objective and constraint values, a success/status code and the run time. You can
    use the rows as training data for a surrogate model (for example, a neural network).
 
-There are three parts:
+There are four parts, all on the *Beam Shape Explorer → Optimization* tab or in `python/`:
 
 | Part | Where | Role |
 |---|---|---|
-| **Optimization Sampler** component | `BeamShapeExplorer/Optimization/OptimizationSampler.cs` (tab *Beam Shape Explorer → Optimization*) | Reads the variable and parameter sliders, collects the objectives and constraints, and serves them on a localhost TCP socket. |
-| **Sampling plan script** | `python/sampling_plan.py` | Step 1: reads the slider bounds from the component (or from a saved `.meta.json`) and writes the sampling plan CSV. It doesn't change anything in the definition. |
-| **Python driver** | `python/bse_optimization_sampler.py` | Step 2: connects to the component, runs an optimization for every plan row through Grasshopper/Rhino and writes the results CSV. |
+| **Sampling Plan** component | `BeamShapeExplorer/Optimization/SamplingPlanComponent.cs` | Step 1: owns the design inputs (Sample Parameter sliders) and the sampling settings. Creates the plan on the canvas, previews it, and can save it to or load it from CSV. |
+| **Optimization Sampler** component | `BeamShapeExplorer/Optimization/OptimizationSampler.cs` | Step 2: takes the variables, objectives, constraints and the plan, and serves them on a localhost TCP socket for the Python driver. |
+| **Sampling plan script** *(optional)* | `python/sampling_plan.py` | Makes a plan CSV from the command line instead of the component, e.g. without Rhino running. |
+| **Python driver** | `python/bse_optimization_sampler.py` | Step 2: connects to the Optimization Sampler, runs an optimization for every plan row through Grasshopper/Rhino and writes the results CSV. |
 
 The paper linked Grasshopper and NLopt with Socket.IO. This implementation uses plain TCP with
 newline-delimited JSON instead, so there are no extra dependencies on either side.
@@ -31,12 +32,41 @@ newline-delimited JSON instead, so there are no extra dependencies on either sid
 
 ## 1. Grasshopper setup
 
-Place **Optimization Sampler** on the canvas and wire it as follows.
+The definition uses two components, one per step:
+
+```
+ design-input sliders ──► Sampling Plan ──Plan──► Optimization Sampler ◄── variable sliders
+ (span, loads, f'c…)      (step 1)                (step 2)              ◄── objectives, constraints
+```
+
+### Sampling Plan component (step 1)
+
+| Input | What to connect | Notes |
+|---|---|---|
+| **Sample Parameters (P)** | Any number of **Number Sliders** | The design inputs sampled between runs (e.g. span, LL, SIDL, f'c) and held fixed during each run. **The slider Min/Max are the sampling bounds.** |
+| **Variables (V)** | *(optional)* The same variable sliders that go into the Optimization Sampler | Needed only for start points made by the plan (Start = `sampled`, `random` or `center`). |
+| **Samples (N)** | Integer, default 50 | Number of optimization runs. Grid sampling uses Grid Levels instead. |
+| **Sampling Method (M)** | Text, default `lhs` | `lhs`, `lhs-optimized`, `lhs-centered`, `sobol`, `halton`, `random` or `grid`. See [Sampling methods](#sampling-methods). |
+| **Start (St)** | Text, default `auto` | Where each run starts: `sampled` (drawn with the sampling method), `random`, `center`, or `current` (the variable values when the study begins). `auto` means `current` when there are Sample Parameters, otherwise `sampled`. |
+| **Seed (S)** | Integer, default 0 | The same inputs and seed always give the same plan. |
+| **Grid Levels (GL)** | *(optional)* Integers | For `grid`: levels per sampled dimension, one value or one per dimension. |
+| **Plan File (F)** | *(optional)* Text | CSV path for Save or Load. A relative path is resolved from the folder of the saved `.gh` file. |
+| **Load (Ld)** | Boolean, default false | Load the plan from Plan File instead of generating it, e.g. a plan edited in Excel. See [Editing or writing a plan yourself](#editing-or-writing-a-plan-yourself). |
+| **Save (Sv)** | Button or Toggle | Save the generated plan, plus a `.meta.json` with its settings, to Plan File. |
+
+Outputs: **Plan** (connect it to the Optimization Sampler), **Parameter Values** and **Start
+Points** (one branch per run, handy for previewing or plotting the plan on the canvas), **Runs**,
+and **Status** (a summary plus any notes, such as clipped values when a CSV is loaded).
+
+The plan only changes when its inputs change, not while the optimizer moves the sliders. Save
+writes the file when the plan changes or when Save is switched on, not on every solution.
+
+### Optimization Sampler component (step 2)
 
 | Input | What to connect | Notes |
 |---|---|---|
 | **Variables (V)** | Any number of **Number Sliders** (one wire per slider) | These are the optimization design variables. **The slider Min/Max are the optimization bounds.** |
-| **Sample Parameters (P)** | *(optional)* Any number of **Number Sliders** | These are the design inputs sampled between runs (e.g. span, LL, SIDL, f'c) and held fixed during each run. The slider Min/Max are the sampling bounds. |
+| **Sampling Plan (Plan)** | *(optional)* The **Plan** output of the Sampling Plan component | The runs to optimize. Without a plan, the driver makes a multi-start plan over the variables, or runs a CSV given with `--plan`. |
 | **Objectives (O)** | Any number of numbers or wires | All values are flattened and minimized as a weighted sum. |
 | **Objective Weights (W)** | *(optional)* Numbers | One weight per objective. The default is 1.0, and the last weight repeats if the list is shorter. Give an objective a weight of 0 to record it in the CSV without optimizing it. |
 | **Constraints (C)** | *(optional)* Any number of numbers or wires | All values are flattened. Each value is checked as `value [type] limit`. |
@@ -45,16 +75,18 @@ Place **Optimization Sampler** on the canvas and wire it as follows.
 | **Port** | Integer | The default is 8765. It must match `--port` in Python. |
 | **Listen (L)** | **Boolean Toggle** | Set it to True to start the server. |
 | **Output Path (Out)** | *(optional)* Text, e.g. from a Panel | Where the results CSV is saved. It can be a file (`D:\studies\beam01\runs.csv`) or a folder, in which case the file is named `optimization_samples.csv`. A relative path such as `results\runs.csv` is resolved from the folder of the saved `.gh` file. Missing folders are created. |
-| **Sampling Method (SM)** | *(optional)* Text, e.g. from a Panel or a Value List | How the Sample Parameters are sampled: `lhs` (default), `lhs-optimized`, `lhs-centered`, `sobol`, `halton`, `random` or `grid`. See [Sampling methods](#sampling-methods). |
 
-The **Status** output also shows where the results will be saved. The **Status**, **Variable Names**, **Lower/Upper Bounds**, **Weighted Objective**,
-**Constraint Violation** and **Evaluations** outputs let you check the setup before you start
-the Python driver.
+The **Status** output shows the connected plan and where the results will be saved. The
+**Status**, **Variable Names**, **Lower/Upper Bounds**, **Weighted Objective**, **Constraint
+Violation** and **Evaluations** outputs let you check the setup before you start the Python
+driver. The Optimization Sampler finds the Sample Parameter sliders through the plan, so don't
+wire them into the Optimization Sampler as well. If the plan has start points made for different
+Variable sliders than the ones connected here, it warns and ignores them.
 
 Typical BSE example:
 
-* **Variables**: sliders for the section depths and widths at the control points of the shaped beam.
-* **Sample Parameters**: sliders for L, h_max, b, LL, SIDL and f'c.
+* **Sample Parameters** (Sampling Plan): sliders for L, h_max, b, LL, SIDL and f'c.
+* **Variables** (Optimization Sampler): sliders for the section depths and widths at the control points of the shaped beam.
 * **Objectives**: the embodied carbon from *Total Cost*. Optionally add the mass with weight 0, so it is recorded but not optimized.
 * **Constraints**: demand/capacity ratios from the flexure, shear and deflection components with limits of 1 and type `<=`, plus geometric checks such as clear cover or effective flange width.
 
@@ -64,7 +96,7 @@ Typical BSE example:
 > and the driver both warn about coarse sliders. Integer sliders are allowed, but the optimizers
 > treat them as continuous.
 
-The component and the driver name each variable and parameter after the slider **NickName**,
+The components and the driver name each variable and parameter after the slider **NickName**,
 so give the sliders meaningful names. The CSV columns use these names. Objective and constraint
 names come from the wired sources, e.g. `Flex.ratio[3]`.
 
@@ -200,21 +232,35 @@ conda install -c conda-forge nlopt
 
 ## 3. Running
 
-Before either step:
+Before running:
 
-1. Open the definition in Rhino/Grasshopper and set **Listen** to True. The component message reads `Listening :8765`.
+1. Open the definition in Rhino/Grasshopper and set the Optimization Sampler's **Listen** to
+   True. The component message reads `Listening :8765`.
 2. Open a terminal in the repository folder and activate the virtual environment
    (`.venv\Scripts\Activate.ps1` on Windows, `source .venv/bin/activate` on macOS; see
    [Python environment setup](#2-python-environment-setup)).
 
 ### Step 1 – Create the sampling plan
 
+#### In Grasshopper (recommended)
+
+Set up the **Sampling Plan** component as described in
+[Sampling Plan component](#sampling-plan-component-step-1) and connect its Plan output to the
+Optimization Sampler. Check the plan on the canvas, through the Parameter Values output or the
+Status panel, and press **Save** to keep a copy as CSV. The driver receives the plan from
+Grasshopper, so there is nothing to run in Python for this step.
+
+#### With Python (optional)
+
+`sampling_plan.py` makes the same kind of plan from the command line. Use it, for example, to
+make plans without Rhino running:
+
 ```bash
 python python/sampling_plan.py --samples 200 --sampling lhs --out study/plan.csv
 ```
 
-The script reads the slider names and bounds from the component, prints a preview of the first
-rows, and writes two files:
+It reads the slider names and bounds from Grasshopper (the Sample Parameters come from the
+connected Sampling Plan component), prints a preview of the first rows, and writes two files:
 
 * `plan.csv`, with one row per optimization run:
 
@@ -226,15 +272,18 @@ rows, and writes two files:
 
 * `plan.meta.json`, with the bounds and the settings used (method, start mode, seed, grid levels).
 
+The Sampling Plan component's **Save** writes exactly the same format, so plans from either
+source can be loaded by the component (**Load**) or run by the driver (`--plan`).
+
 Plan options (see `python python/sampling_plan.py --help`):
 
 | Option | Default | Meaning |
 |---|---|---|
 | `--out FILE` | `sampling_plan.csv` | Plan CSV to write |
 | `--samples N` | 50 | Number of runs in the plan |
-| `--sampling METHOD` | component Sampling Method, else `lhs` | How the parameters (and sampled start points) are drawn. Overrides the component's Sampling Method. See [Sampling methods](#sampling-methods). |
+| `--sampling METHOD` | Sampling Plan component's method, else `lhs` | How the parameters (and sampled start points) are drawn. See [Sampling methods](#sampling-methods). |
 | `--grid-levels` | – | For `grid` only: levels per dimension, as one value (`5`) or one per dimension (`3,5,4`) |
-| `--start auto\|sampled\|random\|center\|current` | `auto` | Start point of each run. `sampled` draws the start points with the sampling method, together with the parameters (`lhs` is accepted as an older name). `current` uses the slider values at the time the plan is made. `auto` uses `current` when there are Sample Parameters; without them it uses `sampled`, which gives a multi-start study of the same problem. |
+| `--start auto\|sampled\|random\|center\|current` | `auto` | Start point of each run, as on the component (`lhs` is accepted for `sampled`). Unlike the component, `current` here writes the slider values at the time the plan is made into the CSV. |
 | `--seed` | 0 | Random seed. The same settings and seed always give the same plan. |
 | `--from-meta FILE` | – | Read the slider bounds from a `.meta.json` written by an earlier plan or study, instead of connecting to Grasshopper. This makes plans without Rhino running. |
 | `--preview N` | 5 | Number of rows to print |
@@ -243,14 +292,16 @@ Plan options (see `python python/sampling_plan.py --help`):
 #### Editing or writing a plan yourself
 
 A plan is an ordinary CSV, so you can open it in Excel, delete or add rows, or create one with
-another tool. When the driver reads a plan, it checks it against the definition:
+another tool. Load it with the Sampling Plan component (**Plan File** + **Load**) or pass it to
+the driver with `--plan`. Both check it against the sliders in the same way:
 
 * Every Sample Parameter needs a column, named `param:<name>` or just `<name>`.
 * `x0:<name>` columns are optional. A missing column or blank cell means "start from the current
   slider value".
 * The `run` column is optional; without it, the rows are numbered from 0. Run numbers must be unique.
 * Values outside the slider bounds are clipped to them, and unknown columns (for example your own
-  notes) are ignored. The driver reports both before it starts.
+  notes) are ignored. Both are reported: by the component in its Status output, and by the driver
+  before it starts.
 
 For example, this is a valid plan for a definition with `L` and `w` parameters:
 
@@ -263,13 +314,16 @@ L,w
 
 ### Sampling methods
 
-Choose the method with the component's **Sampling Method** input or with `--sampling`, which
-overrides the component. `python python/sampling_plan.py --list-sampling` prints the list below.
+Choose the method with the Sampling Plan component's **Sampling Method** input, or with
+`--sampling` when the plan is made in Python. `python python/sampling_plan.py --list-sampling`
+prints the list below. The component and the Python scripts implement the same methods;
+`sobol` and `halton` produce the same base sequences (Joe–Kuo direction numbers, as in SciPy),
+with a random digital shift (Sobol) or digit permutation (Halton) seeded by **Seed**.
 
 | Method | Description | When to use it |
 |---|---|---|
 | `lhs` (default) | Random Latin Hypercube: each parameter's range is split into N equal strata with exactly one sample in each. | The method in the BSE paper. A good general choice for surrogate-model training data. |
-| `lhs-optimized` | Latin Hypercube rearranged to fill the space more evenly (lower centered discrepancy) | Small to medium sample counts, where clusters and gaps matter most |
+| `lhs-optimized` | Latin Hypercube arranged to fill the space more evenly. The component keeps the best of up to 100 random Latin Hypercubes by the largest minimum distance between points; Python minimizes the centered discrepancy (SciPy). | Small to medium sample counts, where clusters and gaps matter most |
 | `lhs-centered` | Latin Hypercube with each sample at the center of its stratum | Even coverage without jitter inside each stratum |
 | `sobol` | Scrambled Sobol low-discrepancy sequence | Very even coverage, especially with many parameters. Use a power-of-2 sample count (64, 128, 256…); the driver reminds you if you don't. |
 | `halton` | Scrambled Halton low-discrepancy sequence | Similar to Sobol, with no power-of-2 preference |
@@ -286,19 +340,29 @@ parameters, and the plan preview shows it before anything runs.
 ### Step 2 – Run the optimizations
 
 ```bash
-python python/bse_optimization_sampler.py --plan study/plan.csv --out study/runs.csv
+python python/bse_optimization_sampler.py --out study/runs.csv
 ```
 
-The driver runs one constrained optimization per plan row and writes the results to the
-component's **Output Path**. `--out` overrides the component. If neither is set, the driver
-writes `optimization_samples.csv` in the folder it was run from. It prints the location it uses,
-and where that location came from, when it starts.
+The driver runs one constrained optimization per plan row. It takes the plan from the first of
+these that is available:
+
+1. `--plan FILE`, a plan CSV given on the command line
+2. the plan connected to the Optimization Sampler's **Sampling Plan** input
+3. a plan it generates itself (see [One-step shortcut](#one-step-shortcut))
+
+Whichever plan runs is saved next to the results as `runs.plan.csv`, so every study records
+exactly what was run.
+
+The results go to the Optimization Sampler's **Output Path**. `--out` overrides it. If neither is
+set, the driver writes `optimization_samples.csv` in the folder it was run from. It prints the
+location it uses, and where that location came from, when it starts.
 
 Optimization options (see `python python/bse_optimization_sampler.py --help`):
 
 | Option | Default | Meaning |
 |---|---|---|
-| `--plan FILE` | – | The sampling plan to run. Without it, see [One-step shortcut](#one-step-shortcut). |
+| `--plan FILE` | – | Run this plan CSV instead of the plan connected in Grasshopper |
+| `--ignore-component-plan` | off | Generate the plan in Python (see [One-step shortcut](#one-step-shortcut)) even if a Sampling Plan is connected |
 | `--out PATH` | component Output Path | CSV file or folder for the results. Overrides the component's Output Path. |
 | `--resume` | off | Continue an interrupted study: skip the plan runs already in the results CSV and append the rest. See [Resuming](#resuming-an-interrupted-study). |
 | `--append` | off | Add the rows to an existing results CSV instead of overwriting it |
@@ -317,18 +381,22 @@ study finishes or is interrupted, the driver restores the original slider values
 
 ### One-step shortcut
 
-If you don't need to review the plan first, leave out `--plan`. The driver then makes the plan
-itself, with the same options as `sampling_plan.py` (`--samples`, `--sampling`, `--grid-levels`,
-`--start`, `--seed`):
+Without a Sampling Plan component or `--plan`, the driver makes the plan itself, with the same
+options as `sampling_plan.py` (`--samples`, `--sampling`, `--grid-levels`, `--start`, `--seed`).
+Without Sample Parameters, this is a multi-start study of the variables:
 
 ```bash
-python python/bse_optimization_sampler.py --samples 200 --sampling sobol --out study/runs.csv
+python python/bse_optimization_sampler.py --samples 64 --sampling sobol --out study/runs.csv
 ```
 
 The plan is still saved separately, as `study/runs.plan.csv` next to the results, so you can
-inspect it later, rerun it with `--plan`, or resume from it. With `--append`, each new batch gets
-its own seed stream, run numbers that continue from the existing results, and its own plan file
-(`runs.plan.<first run>.csv`), so samples are not repeated.
+inspect it later, rerun it with `--plan`, or resume from it. If a Sampling Plan is connected,
+these options are ignored (the driver says so) unless you add `--ignore-component-plan`.
+
+With `--append`, each new batch gets run numbers that continue from the existing results and its
+own plan file (`runs.plan.<first run>.csv`). A plan generated by the driver also gets its own
+seed stream, so samples are not repeated. A plan from Grasshopper is run as it is, so change its
+Seed between batches if you want new samples.
 
 ### Resuming an interrupted study
 
@@ -339,8 +407,9 @@ loses at most the run in progress. To finish it, run the same command again with
 python python/bse_optimization_sampler.py --plan study/plan.csv --out study/runs.csv --resume
 ```
 
-The driver skips every run number that is already in `runs.csv` and appends the rest. Without
-`--plan`, it uses the `runs.plan.csv` saved next to the results.
+The driver skips every run number that is already in `runs.csv` and appends the rest. It uses
+the same plan as before: `--plan` if given, else the connected Sampling Plan, else the
+`runs.plan.csv` saved next to the results.
 
 ### Output
 
@@ -379,7 +448,15 @@ load parameters; flexural utilization `<= 1` and end-depth `>=` constraints):
 python python/mock_gh_server.py --port 8765
 ```
 
-Then, in a second terminal:
+To mimic a connected Sampling Plan component, add `--plan-samples 10` (and optionally
+`--plan-method sobol`, `--plan-start sampled`). Then, in a second terminal, either run the
+connected plan:
+
+```bash
+python python/bse_optimization_sampler.py --port 8765 --out mock_runs.csv
+```
+
+or make a plan in Python and run it:
 
 ```bash
 python python/sampling_plan.py --port 8765 --samples 10 --out mock_plan.csv
@@ -397,8 +474,8 @@ object per line. Every reply has `"ok": true|false`; a failed request also has `
 | `cmd` | Request fields | Reply |
 |---|---|---|
 | `ping` | – | `{"ok":true,"message":"pong"}` |
-| `info` | – | `document`, `output_path`, `variables` / `parameters` (`name`, `min`, `max`, `value`, `decimals`, `integer`), `objective_names`, `weights`, `objectives`, `constraint_names`, `limits`, `types`, `constraints` |
-| `evaluate` | `variables: [..]`, optional `parameters: [..]`, optional `timeout` (s) | Sets the sliders, solves once and returns the applied `variables`/`parameters`, `objectives`, `weights`, `objective`, `constraints`, `limits`, `types`, `violations`, `solve_time`, `gh_errors`, `evaluation` |
+| `info` | – | `document`, `output_path`, `sampling_method`, `variables` / `parameters` (`name`, `min`, `max`, `value`, `decimals`, `integer`; the parameters are the connected plan's sliders), `plan` (`null`, or `runs`, `P`, `X0` (`null` without start points), `parameter_names`, `variable_names`, `method`, `start`, `seed`, `grid_levels`, `source`), `objective_names`, `weights`, `objectives`, `constraint_names`, `limits`, `types`, `constraints` |
+| `evaluate` | `variables: [..]`, optional `parameters: [..]` (in the plan's parameter order), optional `timeout` (s) | Sets the sliders, solves once and returns the applied `variables`/`parameters`, `objectives`, `weights`, `objective`, `constraints`, `limits`, `types`, `violations`, `solve_time`, `gh_errors`, `evaluation` |
 | `set` | Same as `evaluate` | Same as `evaluate`, but the call does not add to the evaluation counter (used to restore the sliders) |
 | `close` | – | Closes the connection |
 

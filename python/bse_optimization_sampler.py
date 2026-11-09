@@ -45,7 +45,7 @@ from typing import Callable, Dict, List, Optional, Sequence, Tuple
 import numpy as np
 
 from sampling_plan import (Plan, Slider, add_plan_arguments, log_plan, make_plan, normalize_sampling,
-                           print_sampling_methods, read_plan, resolve_sampling, write_plan)
+                           plan_from_info, print_sampling_methods, read_plan, resolve_sampling, write_plan)
 
 try:
     import scipy
@@ -508,13 +508,17 @@ def parse_args(argv=None) -> argparse.Namespace:
                          f"{DEFAULT_CSV_NAME} is written to the current folder")
     ap.add_argument("--append", action="store_true", help="append to an existing CSV instead of overwriting")
     ap.add_argument("--plan", default=None, metavar="FILE",
-                    help="run this sampling plan CSV (from sampling_plan.py, edited, or hand-made). Without it, a "
-                         "plan is generated from the sampling-plan options below and saved as <out>.plan.csv")
+                    help="run this sampling plan CSV (from the Sampling Plan component, sampling_plan.py, edited, or "
+                         "hand-made) instead of the plan connected in Grasshopper. Without either, a plan is generated "
+                         "from the sampling-plan options below. The plan that runs is saved as <out>.plan.csv")
+    ap.add_argument("--ignore-component-plan", action="store_true",
+                    help="generate the plan from the options below even if a Sampling Plan is connected in Grasshopper")
     ap.add_argument("--samples-csv", dest="plan", help=argparse.SUPPRESS)  # older name for --plan
     ap.add_argument("--resume", action="store_true",
                     help="continue an interrupted study: skip plan runs already in the output CSV and append the "
-                         "rest. Uses --plan, or else the <out>.plan.csv saved by the interrupted study")
-    add_plan_arguments(ap, "sampling plan (used only when no --plan is given)")
+                         "rest. Uses --plan, the connected Sampling Plan, or else the <out>.plan.csv saved by the "
+                         "interrupted study")
+    add_plan_arguments(ap, "sampling plan (used only when neither --plan nor a connected Sampling Plan is used)")
     ap.add_argument("--algorithm", default="COBYLA",
                     help="scipy method (COBYLA, COBYQA, SLSQP, trust-constr) or nlopt:<ALGO> (e.g. nlopt:LN_COBYLA)")
     ap.add_argument("--maxiter", type=int, default=500, help="max iterations / evaluations per run")
@@ -582,14 +586,27 @@ def main(argv=None) -> int:
             run_offset = (max(existing_runs) + 1) if existing_runs else 0
 
         # ---- sampling plan (step 1): read it, or generate and save it
+        # priority: --plan file > Sampling Plan connected in Grasshopper > saved plan (resume) > generate
         plan_file = args.plan
-        if args.resume and not plan_file:
+        component_plan = None if (plan_file or args.ignore_component_plan) else info.get("plan")
+        if args.resume and not plan_file and not component_plan:
             plan_file = out_stem + ".plan.csv"
             if not os.path.exists(plan_file):
-                raise SystemExit(f"--resume needs the study's plan: pass --plan, or keep {plan_file} next to the results.")
+                raise SystemExit(f"--resume needs the study's plan: pass --plan, connect the Sampling Plan, "
+                                 f"or keep {plan_file} next to the results.")
         if plan_file:
             plan: Plan = read_plan(plan_file, problem.variables, problem.parameters)
             plan_path = os.path.abspath(plan_file)
+        elif component_plan:
+            plan = plan_from_info(component_plan, problem.variables, problem.parameters)
+            if append and not args.resume and run_offset:
+                plan.runs = [r + run_offset for r in plan.runs]
+                plan.notes.append(f"Run numbers shifted by {run_offset} to follow the existing results (--append).")
+            plan_path = out_stem + (f".plan.{run_offset}.csv" if append and not args.resume else ".plan.csv")
+            write_plan(plan, plan_path, info.get("document", ""))
+            if args.sampling or args.grid_levels:
+                log("  note      : using the Sampling Plan from Grasshopper; --sampling/--grid-levels are ignored "
+                    "(use --ignore-component-plan to generate one here instead).")
         else:
             sampling, sampling_source = resolve_sampling(cli_sampling, info.get("sampling_method"))
             log(f"  sampling  : {sampling} (from {sampling_source})")

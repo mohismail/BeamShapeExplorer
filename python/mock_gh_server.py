@@ -26,6 +26,7 @@ STATIONS = np.linspace(0.05, 0.5, 5)   # fraction of span
 VARIABLES = [dict(name=f"h{i}", min=0.10, max=0.80, value=0.50, decimals=3, integer=False) for i in range(5)]
 OUTPUT_PATH = ""
 SAMPLING_METHOD = ""
+PLAN = None  # mimics a Sampling Plan component connected to the Sampling Plan input
 PARAMETERS = [dict(name="L", min=4.0, max=12.0, value=8.0, decimals=2, integer=False),
               dict(name="w", min=5.0, max=40.0, value=20.0, decimals=2, integer=False)]
 
@@ -69,7 +70,7 @@ class Handler(socketserver.StreamRequestHandler):
                     resp = {"ok": True, "message": "pong"}
                 elif cmd == "info":
                     o, c, lim, t = solve()
-                    resp = {"ok": True, "document": "mock_shaped_beam", "output_path": OUTPUT_PATH, "sampling_method": SAMPLING_METHOD, "variables": VARIABLES,
+                    resp = {"ok": True, "document": "mock_shaped_beam", "output_path": OUTPUT_PATH, "sampling_method": SAMPLING_METHOD, "plan": PLAN, "variables": VARIABLES,
                             "parameters": PARAMETERS, "objective_names": ["Volume", "Steel"],
                             "weights": [1.0, 0.0], "objectives": o,
                             "constraint_names": [f"util[{i}]" for i in range(5)] + ["h_end"],
@@ -105,10 +106,25 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--output-path", default="", help="mimics the component's Output Path input")
-    ap.add_argument("--sampling-method", default="", help="mimics the component's Sampling Method input")
+    ap.add_argument("--sampling-method", default="", help="mimics the plan component's Sampling Method")
+    ap.add_argument("--plan-samples", type=int, default=0,
+                    help="mimic a connected Sampling Plan component with this many runs (0 = no plan connected)")
+    ap.add_argument("--plan-method", default="lhs", help="sampling method of the mimicked Sampling Plan component")
+    ap.add_argument("--plan-start", default="auto", help="start mode of the mimicked Sampling Plan component")
     a = ap.parse_args()
     OUTPUT_PATH = a.output_path
     SAMPLING_METHOD = a.sampling_method
+    if a.plan_samples:
+        from sampling_plan import Slider, make_plan
+        sl = lambda d: Slider.from_info(d)
+        pl = make_plan([sl(v) for v in VARIABLES], [sl(p) for p in PARAMETERS], a.plan_samples, a.plan_method,
+                       a.plan_start, seed=1)
+        has_x0 = pl.start != "current"
+        PLAN = {"source": "generated", "method": pl.method, "start": pl.start, "seed": pl.seed,
+                "grid_levels": pl.grid_levels, "parameter_names": [p["name"] for p in PARAMETERS],
+                "variable_names": [v["name"] for v in VARIABLES] if has_x0 else [],
+                "runs": pl.runs, "P": pl.P.tolist(), "X0": pl.X0.tolist() if has_x0 else None}
+        SAMPLING_METHOD = pl.method
     socketserver.TCPServer.allow_reuse_address = True
     with socketserver.TCPServer(("127.0.0.1", a.port), Handler) as srv:
         print(f"mock Optimization Sampler listening on 127.0.0.1:{a.port}", flush=True)

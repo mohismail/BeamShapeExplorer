@@ -17,14 +17,14 @@ using Grasshopper.Kernel.Types;
 namespace BeamShapeExplorer.Optimization
 {
     /// <summary>
-    /// Exposes a Grasshopper definition to an external (C)Python optimization driver so that many
-    /// constrained optimization runs can be sampled automatically, following the BSE surrogate-model
-    /// data-collection workflow (LHS over design inputs -> one constrained optimization per sample).
+    /// Step 2 of the optimization sampling workflow: exposes a Grasshopper definition to an external (C)Python
+    /// optimization driver, which runs one constrained optimization per row of a sampling plan, following the
+    /// BSE surrogate-model data-collection workflow.
     ///
     /// Everything is generic:
     ///   * Variables          - any number of Number Sliders. Their Min/Max are the optimization bounds.
-    ///   * Sample Parameters  - optional Number Sliders that are held fixed during one optimization run
-    ///                          and sampled (e.g. Latin Hypercube) between runs. Min/Max are the sample bounds.
+    ///   * Sampling Plan      - optional plan from the Sampling Plan component (step 1): the Sample Parameter
+    ///                          sliders, their value for every run, and optionally the start points.
     ///   * Objectives         - any number of numbers (wires); minimized as a weighted sum.
     ///   * Constraints        - any number of numbers (wires); each is "value [<=|>=|=] limit".
     ///
@@ -35,7 +35,7 @@ namespace BeamShapeExplorer.Optimization
     public class OptimizationSampler : GH_Component
     {
         private const int InVariables = 0;
-        private const int InParameters = 1;
+        private const int InPlan = 1;
         private const int InObjectives = 2;
         private const int InWeights = 3;
         private const int InConstraints = 4;
@@ -44,7 +44,6 @@ namespace BeamShapeExplorer.Optimization
         private const int InPort = 7;
         private const int InListen = 8;
         private const int InOutput = 9;
-        private const int InSampling = 10;
 
         private const int DefaultPort = 8765;
         private const int DefaultTimeoutMs = 10 * 60 * 1000;
@@ -64,7 +63,7 @@ namespace BeamShapeExplorer.Optimization
         private int _solveCount;
         private int _evaluationCount;
         private volatile string _outputPath = "";
-        private volatile string _samplingMethod = "";
+        private volatile SamplingPlan _plan;
 
         private sealed class Snapshot
         {
@@ -79,10 +78,10 @@ namespace BeamShapeExplorer.Optimization
 
         public OptimizationSampler()
           : base("Optimization Sampler", "OptSampler",
-              "Connects this Grasshopper definition to an external Python optimization driver " +
-              "(python/bse_optimization_sampler.py) to sample many constrained optimization runs. " +
-              "Variables and sample parameters are Number Sliders whose Min/Max define the bounds; " +
-              "objectives and constraints are any numbers. Results are saved to CSV by the Python driver.",
+              "Step 2 of optimization sampling: connects this definition to the Python driver " +
+              "(python/bse_optimization_sampler.py), which runs one constrained optimization per row of the " +
+              "Sampling Plan. Variables are Number Sliders whose Min/Max are the optimization bounds; objectives " +
+              "and constraints are any numbers. The driver saves the results to CSV.",
               "Beam Shape Explorer", "Optimization")
         {
         }
@@ -95,10 +94,11 @@ namespace BeamShapeExplorer.Optimization
                 "Optimization design variables. Connect any number of Number Sliders; the slider Min/Max " +
                 "are used as the optimization bounds. Use enough decimal places on the sliders, since slider values are rounded.",
                 GH_ParamAccess.tree);
-            pManager.AddNumberParameter("Sample Parameters", "P",
-                "(Optional) Design inputs that are sampled between optimization runs (e.g. span, load, f'c) and held " +
-                "fixed during each run. Connect any number of Number Sliders; Min/Max are the sampling bounds.",
-                GH_ParamAccess.tree);
+            pManager.AddGenericParameter("Sampling Plan", "Plan",
+                "(Optional) The plan from the Sampling Plan component: which Sample Parameter values each run uses, " +
+                "and optionally where each run starts. Without a plan, the Python driver makes a multi-start plan " +
+                "over the variables (or runs a plan CSV given with --plan).",
+                GH_ParamAccess.item);
             pManager.AddNumberParameter("Objectives", "O",
                 "Objective value(s) to minimize. Any number of wires/values; they are combined as a weighted sum.",
                 GH_ParamAccess.tree);
@@ -124,18 +124,10 @@ namespace BeamShapeExplorer.Optimization
                 "folder of this .gh file. Missing folders are created. The driver's --out option overrides this.",
                 GH_ParamAccess.item);
 
-            for (int i = InParameters; i <= InTypes; i++)
+            for (int i = InPlan; i <= InTypes; i++)
                 if (i != InObjectives) pManager[i].Optional = true;
             pManager[InVariables].Optional = true;
-            pManager.AddTextParameter("Sampling Method", "SM",
-                "(Optional) How the sampling plan (python/sampling_plan.py, or the driver when it makes the plan itself) " +
-                "samples the Sample Parameters: " +
-                "lhs (Latin Hypercube, default), lhs-optimized, lhs-centered, sobol, halton, random, or grid " +
-                "(full factorial). The --sampling option overrides this. Not used when the driver runs an existing plan (--plan).",
-                GH_ParamAccess.item);
-
             pManager[InOutput].Optional = true;
-            pManager[InSampling].Optional = true;
         }
 
         protected override void RegisterOutputParams(GH_Component.GH_OutputParamManager pManager)
@@ -166,17 +158,19 @@ namespace BeamShapeExplorer.Optimization
             DA.GetData(InListen, ref listen);
             string outputPath = "";
             DA.GetData(InOutput, ref outputPath);
-            _outputPath = ResolveOutputPath(outputPath);
-            string sampling = "";
-            DA.GetData(InSampling, ref sampling);
-            string samplingKey = NormalizeSampling(sampling);
-            if (samplingKey == null)
+            string resolved = GhUtil.ResolvePath(outputPath, OnPingDocument(), out string pathRemark);
+            if (resolved == null)
             {
-                AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "Unknown Sampling Method \"" + sampling +
-                    "\". Use one of: " + string.Join(", ", SamplingMethods) + ".");
-                samplingKey = "";
+                AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "Output Path contains invalid characters.");
+                resolved = "";
             }
-            _samplingMethod = samplingKey;
+            if (pathRemark != null)
+                AddRuntimeMessage(GH_RuntimeMessageLevel.Remark, pathRemark + " It will be resolved from the Python driver's working folder.");
+            _outputPath = resolved;
+            SamplingPlan plan = null;
+            if (Params.Input[InPlan].SourceCount > 0 && !DA.GetData(InPlan, ref plan))
+                AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, "Sampling Plan input has no plan; connect the Plan output of a Sampling Plan component.");
+            _plan = plan;
 
             // validate constraint types
             for (int i = 0; i < types.Count; i++)
@@ -208,8 +202,13 @@ namespace BeamShapeExplorer.Optimization
 
             // ---- inspect sliders
             List<string> warnings = new List<string>();
-            List<GH_NumberSlider> vars = GetSliders(InVariables, warnings);
-            List<GH_NumberSlider> pars = GetSliders(InParameters, warnings);
+            List<GH_NumberSlider> vars = GhUtil.GetSliders(Params.Input[InVariables], warnings);
+            List<GH_NumberSlider> pars = new List<GH_NumberSlider>();
+            try { pars = PlanSliders(plan); }
+            catch (Exception ex) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, ex.Message); }
+            if (plan != null && plan.HasStartPoints && !StartPointsMatch(plan, vars))
+                warnings.Add("The plan's start points were made for different Variable sliders than the ones connected here; " +
+                             "they are ignored and each run starts from the current variable values.");
             foreach (string w in warnings) AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, w);
             if (vars.Count == 0)
                 AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, "Connect at least one Number Slider to Variables (V).");
@@ -249,7 +248,8 @@ namespace BeamShapeExplorer.Optimization
             status.Add(vars.Count + " variable(s), " + pars.Count + " sample parameter(s), " +
                        objectives.Count + " objective(s), " + constraints.Count + " constraint(s)");
             if (_serverError != null) status.Add("Error: " + _serverError);
-            status.Add("Sampling method: " + (_samplingMethod.Length > 0 ? _samplingMethod : "lhs (default)"));
+            status.Add(plan != null ? plan.ToString()
+                : "No Sampling Plan connected: the driver makes a multi-start plan over the variables (or runs --plan)");
             status.Add(_outputPath.Length > 0
                 ? "Results will be saved to: " + _outputPath
                 : "Output Path not set: the driver uses its --out option (default optimization_samples.csv in its working folder)");
@@ -261,7 +261,7 @@ namespace BeamShapeExplorer.Optimization
             double weighted = WeightedSum(objectives, snap.Weights);
 
             DA.SetDataList(0, status);
-            DA.SetDataList(1, UniqueNames(vars.Select(s => s.NickName).ToList(), "x"));
+            DA.SetDataList(1, GhUtil.UniqueNames(vars.Select(s => s.NickName).ToList(), "x"));
             DA.SetDataList(2, vars.Select(s => (double)s.Slider.Minimum).ToList());
             DA.SetDataList(3, vars.Select(s => (double)s.Slider.Maximum).ToList());
             DA.SetData(4, weighted);
@@ -290,50 +290,6 @@ namespace BeamShapeExplorer.Optimization
                 foreach (GH_String s in branch)
                     if (s != null) result.Add(s.Value);
             return result;
-        }
-
-        /// <summary>
-        /// Resolves the Output Path input: relative paths are taken relative to the saved .gh file's folder
-        /// (left relative if the document is unsaved, so the driver resolves them from its working folder).
-        /// </summary>
-        private string ResolveOutputPath(string path)
-        {
-            if (string.IsNullOrWhiteSpace(path)) return "";
-            path = Environment.ExpandEnvironmentVariables(path.Trim().Trim('"'));
-            if (path.IndexOfAny(Path.GetInvalidPathChars()) >= 0)
-            {
-                AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "Output Path contains invalid characters.");
-                return "";
-            }
-            if (!Path.IsPathRooted(path))
-            {
-                string ghFile = OnPingDocument()?.FilePath;
-                if (!string.IsNullOrEmpty(ghFile))
-                    path = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(ghFile), path));
-                else
-                    AddRuntimeMessage(GH_RuntimeMessageLevel.Remark,
-                        "Output Path is relative and this definition is unsaved; it will be resolved from the Python driver's working folder.");
-            }
-            return path;
-        }
-
-        private static readonly string[] SamplingMethods =
-            { "lhs", "lhs-optimized", "lhs-centered", "sobol", "halton", "random", "grid" };
-
-        /// <summary>Returns the canonical sampling method name, "" when not set, or null when unknown.</summary>
-        private static string NormalizeSampling(string name)
-        {
-            if (string.IsNullOrWhiteSpace(name)) return "";
-            string key = name.Trim().ToLowerInvariant().Replace('_', '-').Replace(' ', '-');
-            switch (key)
-            {
-                case "latin": case "latin-hypercube": key = "lhs"; break;
-                case "lhs-maximin": case "optimized-lhs": key = "lhs-optimized"; break;
-                case "centered-lhs": key = "lhs-centered"; break;
-                case "monte-carlo": case "montecarlo": case "uniform": case "mc": key = "random"; break;
-                case "factorial": case "full-factorial": key = "grid"; break;
-            }
-            return Array.IndexOf(SamplingMethods, key) >= 0 ? key : null;
         }
 
         private static List<T> Expand<T>(List<T> values, int count, T fallback)
@@ -398,53 +354,31 @@ namespace BeamShapeExplorer.Optimization
                 names.Clear();
                 for (int i = 0; i < count; i++) names.Add(prefix + i);
             }
-            return UniqueNames(names, prefix);
+            return GhUtil.UniqueNames(names, prefix);
         }
 
-        private static List<string> UniqueNames(List<string> names, string prefix)
-        {
-            var result = new List<string>();
-            var seen = new Dictionary<string, int>(StringComparer.Ordinal);
-            for (int i = 0; i < names.Count; i++)
-            {
-                string n = string.IsNullOrWhiteSpace(names[i]) ? prefix + i : names[i].Trim();
-                n = n.Replace(",", "_").Replace("\"", "_").Replace("\n", "_");
-                if (seen.TryGetValue(n, out int c))
-                {
-                    seen[n] = c + 1;
-                    n = n + "_" + (c + 1);
-                }
-                else seen[n] = 0;
-                result.Add(n);
-            }
-            return result;
-        }
-
-        private List<GH_NumberSlider> GetSliders(int inputIndex, List<string> warnings)
+        /// <summary>The plan's Sample Parameter sliders, found in the document by their instance id.</summary>
+        private List<GH_NumberSlider> PlanSliders(SamplingPlan plan)
         {
             var sliders = new List<GH_NumberSlider>();
-            IGH_Param input = Params.Input[inputIndex];
-            foreach (IGH_Param src in input.Sources)
+            if (plan == null) return sliders;
+            GH_Document doc = OnPingDocument();
+            foreach (SliderRef r in plan.Parameters)
             {
-                if (src is GH_NumberSlider s) sliders.Add(s);
-                else if (warnings != null)
-                    warnings.Add("Input \"" + input.Name + "\" source \"" + src.NickName +
-                                 "\" is not a Number Slider and will be ignored by the optimizer.");
+                if (!(doc?.FindObject(r.Id, true) is GH_NumberSlider s))
+                    throw new InvalidOperationException("The Sample Parameter slider \"" + r.Name +
+                        "\" used by the Sampling Plan is no longer in this document.");
+                sliders.Add(s);
             }
             return sliders;
         }
 
-        private static Dictionary<string, object> SliderInfo(GH_NumberSlider s, string name)
+        private static bool StartPointsMatch(SamplingPlan plan, List<GH_NumberSlider> vars)
         {
-            return new Dictionary<string, object>
-            {
-                { "name", name },
-                { "min", (double)s.Slider.Minimum },
-                { "max", (double)s.Slider.Maximum },
-                { "value", (double)s.Slider.Value },
-                { "decimals", s.Slider.DecimalPlaces },
-                { "integer", s.Slider.Type != Grasshopper.GUI.Base.GH_SliderAccuracy.Float },
-            };
+            if (plan.Variables.Count != vars.Count) return false;
+            for (int i = 0; i < vars.Count; i++)
+                if (plan.Variables[i].Id != vars[i].InstanceGuid) return false;
+            return true;
         }
 
         // ===================================================================== server
@@ -589,10 +523,12 @@ namespace BeamShapeExplorer.Optimization
 
         private Dictionary<string, object> BuildInfo()
         {
-            List<GH_NumberSlider> vars = GetSliders(InVariables, null);
-            List<GH_NumberSlider> pars = GetSliders(InParameters, null);
-            List<string> varNames = UniqueNames(vars.Select(s => s.NickName).ToList(), "x");
-            List<string> parNames = UniqueNames(pars.Select(s => s.NickName).ToList(), "p");
+            SamplingPlan plan = _plan;
+            List<GH_NumberSlider> vars = GhUtil.GetSliders(Params.Input[InVariables], null);
+            List<GH_NumberSlider> pars = PlanSliders(plan);
+            List<SliderRef> varRefs = GhUtil.SliderRefs(vars, "x");
+            // parameter names come from the plan, so they match its columns; bounds are read live from the sliders
+            var parRefs = pars.Select((s, i) => SliderRef.From(s, plan.Parameters[i].Name)).ToList();
             Snapshot snap;
             lock (_snapshotLock) snap = _snapshot;
 
@@ -601,9 +537,10 @@ namespace BeamShapeExplorer.Optimization
                 { "ok", true },
                 { "document", OnPingDocument()?.DisplayName ?? "" },
                 { "output_path", _outputPath },
-                { "sampling_method", _samplingMethod },
-                { "variables", vars.Select((s, i) => SliderInfo(s, varNames[i])).ToList() },
-                { "parameters", pars.Select((s, i) => SliderInfo(s, parNames[i])).ToList() },
+                { "sampling_method", plan != null && plan.Source == "generated" ? plan.Method : "" },
+                { "variables", varRefs.Select(r => (object)r.ToInfo()).ToList() },
+                { "parameters", parRefs.Select(r => (object)r.ToInfo()).ToList() },
+                { "plan", plan != null ? plan.ToInfo(StartPointsMatch(plan, vars)) : null },
                 { "objective_names", snap.ObjectiveNames },
                 { "weights", snap.Weights },
                 { "objectives", snap.Objectives },
@@ -622,8 +559,8 @@ namespace BeamShapeExplorer.Optimization
             if (doc.SolutionState == GH_ProcessStep.Process)
                 throw new InvalidOperationException("A Grasshopper solution is already in progress.");
 
-            List<GH_NumberSlider> vars = GetSliders(InVariables, null);
-            List<GH_NumberSlider> pars = GetSliders(InParameters, null);
+            List<GH_NumberSlider> vars = GhUtil.GetSliders(Params.Input[InVariables], null);
+            List<GH_NumberSlider> pars = PlanSliders(_plan);
             if (x != null && x.Count != vars.Count)
                 throw new ArgumentException("Expected " + vars.Count + " variable value(s) but received " + x.Count + ".");
             if (p != null && p.Count > 0 && p.Count != pars.Count)

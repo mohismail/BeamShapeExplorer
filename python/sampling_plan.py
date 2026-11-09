@@ -356,6 +356,30 @@ def read_plan(path: str, variables: Sequence[Slider], parameters: Sequence[Slide
     return plan
 
 
+def plan_from_info(data: dict, variables: Sequence[Slider], parameters: Sequence[Slider]) -> Plan:
+    """Build a Plan from the 'plan' entry the Optimization Sampler component sends (its Sampling Plan input)."""
+    variables, parameters = list(variables), list(parameters)
+    runs = [int(r) for r in data.get("runs") or []]
+    P = np.array(data.get("P") or [[] for _ in runs], dtype=float).reshape(len(runs), len(parameters))
+    X0_raw = data.get("X0")
+    notes: List[str] = []
+    if X0_raw:
+        X0 = np.array(X0_raw, dtype=float).reshape(len(runs), len(variables))
+    else:
+        X0 = np.tile([s.value for s in variables], (len(runs), 1)).astype(float)
+        if variables:
+            notes.append("The plan has no start points; each run starts from the current variable values.")
+    if not runs:
+        raise SystemExit("The Sampling Plan connected in Grasshopper has no runs.")
+    source = data.get("source") or "generated"
+    plan = Plan(variables, parameters, runs, P, X0,
+                method=data.get("method") or "file", start=data.get("start") or "file", seed=data.get("seed"),
+                grid_levels=data.get("grid_levels"),
+                source="Grasshopper Sampling Plan" + ("" if source == "generated" else f" (loaded from {source})"),
+                notes=notes)
+    return plan
+
+
 # ============================================================================ CLI
 
 
@@ -397,7 +421,9 @@ def log_plan(plan: Plan, log: Callable[..., None], preview: int = 0) -> None:
         log(f"  plan      : {len(plan)} run(s), sampling {plan.method}, start {plan.start}, seed {plan.seed}"
             + (f", grid levels {plan.grid_levels}" if plan.grid_levels else ""))
     else:
-        log(f"  plan      : {len(plan)} run(s) from {plan.source}")
+        how = (f" (sampling {plan.method}, start {plan.start}, seed {plan.seed})"
+               if plan.method not in (None, "file") else "")
+        log(f"  plan      : {len(plan)} run(s) from {plan.source}{how}")
     for note in plan.notes:
         log(f"  note      : {note}")
     if preview:
