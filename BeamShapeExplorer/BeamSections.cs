@@ -169,7 +169,7 @@ namespace BeamShapeExplorer
             for (int i = 0; i < splitPls.Length; i++) { newMu[i] = Mu[0]; } 
             if (Mu.Count == splitPls.Length) { newMu = Mu.ToArray(); }
 
-            CurveSimplifyOptions crvSimp = new CurveSimplifyOptions();
+            //CurveSimplifyOptions crvSimp = new CurveSimplifyOptions();
 
             for (int i = 0; i < splitPls.Length; i++)
             {
@@ -177,7 +177,9 @@ namespace BeamShapeExplorer
                 Brep[] brepAg = Brep.CreatePlanarBreps(ag, DocumentTolerance());
                 Surface srfAg = brepAg[0].Faces[0];
 
-                Curve ag0 = ag[0].Simplify(CurveSimplifyOptions.All, DocumentTolerance(), DocumentAngleTolerance());
+
+                Curve ag0 = ag[0];
+                //Curve ag0 = ag[0].Simplify(CurveSimplifyOptions.All, DocumentTolerance(), DocumentAngleTolerance());
 
                 AgCrv.Add(ag0);
 
