@@ -380,8 +380,8 @@ def sample_unit(method: str, n: int, d: int, rng: np.random.Generator,
         return rng.random((n, d))
     try:
         from scipy.stats import qmc
-    except ImportError as err:  # scipy < 1.7
-        raise SystemExit(f"Sampling method '{method}' needs scipy >= 1.7 (scipy.stats.qmc).") from err
+    except ImportError as err:  # scipy too old
+        raise SystemExit(f"Sampling method '{method}' needs scipy >= 1.8 (scipy.stats.qmc).") from err
     if method == "lhs-optimized":
         engine = _qmc_engine(qmc.LatinHypercube, d, rng, optimization="random-cd")
     elif method == "lhs-centered":

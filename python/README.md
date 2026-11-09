@@ -65,28 +65,143 @@ The component and the driver name each variable and parameter after the slider *
 so give the sliders meaningful names. The CSV columns use these names. Objective and constraint
 names come from the wired sources, e.g. `Flex.ratio[3]`.
 
-## 2. Python setup
+## 2. Python environment setup
 
-Install the dependencies in any **external** CPython 3.8+ (not the Rhino script editor, see the note below):
+The driver runs in a normal, **external** Python installation, not in Rhino's built-in Python.
+You only need to do this setup once per computer.
 
-```bash
-pip install -r python/requirements.txt
+> **Why not Rhino's Python?** Grasshopper solves on Rhino's UI thread. A script running inside
+> Rhino's own script editor would block that thread, and every request to the component would
+> time out. Always run the driver from a terminal (PowerShell, Command Prompt or Terminal).
+
+### Requirements
+
+| Package | Version | Needed for |
+|---|---|---|
+| Python | 3.8 or newer (3.10–3.12 recommended) | Running the driver |
+| numpy | ≥ 1.20 | Everything |
+| scipy | ≥ 1.8 | The optimizers (COBYLA, SLSQP, …) and the `lhs-optimized`, `lhs-centered`, `sobol` and `halton` sampling methods |
+| nlopt | *optional* | The `nlopt:<ALGO>` algorithms, such as the NLopt COBYLA used in the BSE paper |
+
+### Step 1 – Install Python
+
+**Windows:** download the installer from [python.org/downloads](https://www.python.org/downloads/).
+On the first screen of the installer, tick **"Add python.exe to PATH"**, then choose
+*Install Now*. Afterwards, open a **new** PowerShell window and check the installation:
+
+```powershell
+py --version
 ```
 
-Optionally, add NLopt, the library used in the paper:
+**macOS:** install Python from [python.org/downloads](https://www.python.org/downloads/) or with
+Homebrew (`brew install python`), then check it in Terminal:
 
 ```bash
-pip install nlopt
+python3 --version
 ```
 
-> Run the driver from a normal terminal, outside Rhino. Grasshopper solves on Rhino's UI thread.
-> A script running inside Rhino's own Python editor would block that thread, and every request
-> would time out.
+On Windows the `py` launcher is the most reliable command. On macOS use `python3`. The commands
+below use these names until the virtual environment is active; after that, plain `python` works
+everywhere.
+
+### Step 2 – Get the scripts
+
+Clone the repository, or download it from GitHub as a ZIP (*Code → Download ZIP*) and extract it.
+Then open a terminal in the repository folder, the one that contains the `python` folder:
+
+```powershell
+cd C:\path\to\BeamShapeExplorer
+```
+
+### Step 3 – Create and activate a virtual environment
+
+A virtual environment keeps these packages separate from other Python projects. Create it once:
+
+```powershell
+# Windows
+py -m venv .venv
+```
+
+```bash
+# macOS
+python3 -m venv .venv
+```
+
+Then **activate it every time you open a new terminal** to run the driver:
+
+| Shell | Command |
+|---|---|
+| Windows PowerShell | `.venv\Scripts\Activate.ps1` |
+| Windows Command Prompt | `.venv\Scripts\activate.bat` |
+| macOS Terminal (bash/zsh) | `source .venv/bin/activate` |
+
+When it is active, the prompt starts with `(.venv)`. To leave the environment, run `deactivate`.
+
+> **PowerShell says "running scripts is disabled on this system"?** Allow local scripts for
+> your user once, then activate again:
+>
+> ```powershell
+> Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+> ```
+
+### Step 4 – Install the packages
+
+With the environment active:
+
+```powershell
+python -m pip install --upgrade pip
+python -m pip install -r python/requirements.txt
+```
+
+Optionally, add NLopt:
+
+```powershell
+python -m pip install nlopt
+```
+
+### Step 5 – Check the installation
+
+```powershell
+python -c "import numpy, scipy; print('numpy', numpy.__version__, '| scipy', scipy.__version__)"
+python python/bse_optimization_sampler.py --list-sampling
+```
+
+The first command prints the package versions, and the second lists the sampling methods. To
+test the full workflow without Rhino, use the mock server described in
+[Testing without Rhino](#4-testing-without-rhino).
+
+### Alternative: conda
+
+If you already use Anaconda or Miniconda, you can use a conda environment instead of steps 3–4:
+
+```bash
+conda create -n bse python=3.11 numpy scipy
+conda activate bse
+```
+
+Optionally, add NLopt from conda-forge:
+
+```bash
+conda install -c conda-forge nlopt
+```
+
+### Troubleshooting
+
+| Problem | Fix |
+|---|---|
+| `python` or `py` is not recognized, or it opens the Microsoft Store | Python is not on PATH. Re-run the installer, choose *Modify*, and tick *Add Python to environment variables*. Alternatively, turn off the `python.exe` entries under Windows *Settings → Apps → Advanced app settings → App execution aliases*. |
+| `ModuleNotFoundError: No module named 'numpy'` (or `scipy`) | The virtual environment is not active in this terminal. Activate it (step 3) and try again. |
+| `Sampling method '…' needs scipy >= 1.8` or `unexpected keyword argument 'optimization'` | scipy is too old. Run `python -m pip install --upgrade scipy`. |
+| `pip install nlopt` fails | No prebuilt NLopt package exists for your Python version. Use the conda-forge package, or use the SciPy algorithms (the default COBYLA needs no extra packages). |
+| `Could not connect to Grasshopper at 127.0.0.1:8765` | In Grasshopper, set the component's **Listen** input to True and check that its **Port** matches `--port`. The connection stays on your own computer, so the firewall should not need changes. |
 
 ## 3. Running
 
 1. Open the definition in Rhino/Grasshopper and set **Listen** to True. The component message reads `Listening :8765`.
-2. Run the driver:
+2. Open a terminal in the repository folder and activate the virtual environment
+   (`.venv\Scripts\Activate.ps1` on Windows, `source .venv/bin/activate` on macOS; see
+   [Python environment setup](#2-python-environment-setup)).
+3. Run the driver:
 
 ```bash
 python python/bse_optimization_sampler.py --samples 200
