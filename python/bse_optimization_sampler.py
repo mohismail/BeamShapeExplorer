@@ -317,6 +317,87 @@ def latin_hypercube(n: int, d: int, rng: np.random.Generator) -> np.ndarray:
     return u
 
 
+SAMPLING_METHODS = {
+    "lhs": "Latin Hypercube, random point inside each stratum (the method used in the BSE paper)",
+    "lhs-optimized": "Latin Hypercube optimized for space filling (lower centered discrepancy)",
+    "lhs-centered": "Latin Hypercube with every point at the center of its stratum",
+    "sobol": "Scrambled Sobol low-discrepancy sequence (best with a power-of-2 sample count)",
+    "halton": "Scrambled Halton low-discrepancy sequence",
+    "random": "Uniform random (Monte Carlo)",
+    "grid": "Full-factorial grid including the slider bounds (levels^dimensions runs)",
+}
+_SAMPLING_ALIASES = {"latin": "lhs", "latin-hypercube": "lhs", "lhs-maximin": "lhs-optimized",
+                     "optimized-lhs": "lhs-optimized", "centered-lhs": "lhs-centered", "monte-carlo": "random",
+                     "montecarlo": "random", "uniform": "random", "mc": "random", "factorial": "grid",
+                     "full-factorial": "grid"}
+
+
+def normalize_sampling(name: Optional[str]) -> Optional[str]:
+    if not name or not str(name).strip():
+        return None
+    key = str(name).strip().lower().replace("_", "-").replace(" ", "-")
+    key = _SAMPLING_ALIASES.get(key, key)
+    if key not in SAMPLING_METHODS:
+        raise SystemExit(f"Unknown sampling method '{name}'. Choose one of: {', '.join(SAMPLING_METHODS)}.")
+    return key
+
+
+def _qmc_engine(cls, d: int, rng: np.random.Generator, **kwargs):
+    seed = int(rng.integers(2 ** 32))
+    try:
+        return cls(d, rng=seed, **kwargs)   # scipy >= 1.15
+    except TypeError:
+        return cls(d, seed=seed, **kwargs)  # older scipy
+
+
+def grid_levels(levels_arg: Optional[str], n_target: int, d: int) -> List[int]:
+    """Levels per dimension for a full-factorial grid: from --grid-levels, or the largest even split of --samples."""
+    if levels_arg:
+        levels = [int(v) for v in str(levels_arg).replace(";", ",").split(",") if v.strip()]
+        if len(levels) == 1:
+            levels = levels * d
+        if len(levels) != d or any(v < 1 for v in levels):
+            raise SystemExit(f"--grid-levels needs one value or {d} comma-separated values >= 1.")
+        return levels
+    k = max(2, int(math.floor(n_target ** (1.0 / d) + 1e-9))) if d else 1
+    return [k] * d
+
+
+def sample_unit(method: str, n: int, d: int, rng: np.random.Generator,
+                levels: Optional[List[int]] = None) -> np.ndarray:
+    """Sample points in the unit hypercube [0, 1]^d. For 'grid' the number of rows is prod(levels), not n."""
+    if method == "grid":
+        if d == 0:
+            return np.zeros((n, 0))
+        axes = [np.linspace(0.0, 1.0, k) if k > 1 else np.array([0.5]) for k in levels]
+        mesh = np.meshgrid(*axes, indexing="ij")
+        return np.stack([m.ravel() for m in mesh], axis=1)
+    if d == 0:
+        return np.zeros((n, 0))
+    if method == "lhs":
+        return latin_hypercube(n, d, rng)
+    if method == "random":
+        return rng.random((n, d))
+    try:
+        from scipy.stats import qmc
+    except ImportError as err:  # scipy < 1.7
+        raise SystemExit(f"Sampling method '{method}' needs scipy >= 1.7 (scipy.stats.qmc).") from err
+    if method == "lhs-optimized":
+        engine = _qmc_engine(qmc.LatinHypercube, d, rng, optimization="random-cd")
+    elif method == "lhs-centered":
+        engine = _qmc_engine(qmc.LatinHypercube, d, rng, scramble=False)
+    elif method == "sobol":
+        engine = _qmc_engine(qmc.Sobol, d, rng, scramble=True)
+    elif method == "halton":
+        engine = _qmc_engine(qmc.Halton, d, rng, scramble=True)
+    else:
+        raise SystemExit(f"Unknown sampling method '{method}'.")
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")  # Sobol warns when n is not a power of 2
+        return np.asarray(engine.random(n), dtype=float)
+
+
 def scale(u: np.ndarray, sliders: Sequence[Slider]) -> np.ndarray:
     if not sliders:
         return np.zeros((u.shape[0], 0))
@@ -547,14 +628,21 @@ def parse_args(argv=None) -> argparse.Namespace:
                          f"{DEFAULT_CSV_NAME} is written to the current folder")
     ap.add_argument("--append", action="store_true", help="append to an existing CSV instead of overwriting")
     ap.add_argument("--samples", type=int, default=50, help="number of optimization runs")
-    ap.add_argument("--sampling", choices=["lhs", "random"], default="lhs",
-                    help="how the Sample Parameters (and LHS start points) are drawn")
+    ap.add_argument("--sampling", default=None, metavar="METHOD",
+                    help="how the Sample Parameters (and sampled start points) are drawn: "
+                         + ", ".join(SAMPLING_METHODS) + ". Overrides the component's Sampling Method input; "
+                         "default lhs")
+    ap.add_argument("--grid-levels", default=None,
+                    help="for --sampling grid: levels per dimension, one value or a comma list "
+                         "(default: the largest grid with at most --samples points, min 2 levels)")
+    ap.add_argument("--list-sampling", action="store_true", help="list the sampling methods and exit")
     ap.add_argument("--samples-csv", default=None,
                     help="optional CSV of explicit parameter samples (columns named after the parameter sliders); "
                          "overrides --samples/--sampling for the parameters")
-    ap.add_argument("--start", choices=["auto", "lhs", "random", "center", "current"], default="auto",
-                    help="starting point of each run; 'auto' = 'current' slider values when there are sample "
-                         "parameters, otherwise 'lhs' (multi-start)")
+    ap.add_argument("--start", choices=["auto", "sampled", "lhs", "random", "center", "current"], default="auto",
+                    help="starting point of each run: 'sampled' = drawn with the sampling method together with the "
+                         "parameters ('lhs' is an alias); 'auto' = 'current' slider values when there are sample "
+                         "parameters, otherwise 'sampled' (multi-start)")
     ap.add_argument("--seed", type=int, default=0, help="random seed")
     ap.add_argument("--algorithm", default="COBYLA",
                     help="scipy method (COBYLA, COBYQA, SLSQP, trust-constr) or nlopt:<ALGO> (e.g. nlopt:LN_COBYLA)")
@@ -578,7 +666,12 @@ def parse_args(argv=None) -> argparse.Namespace:
 
 def main(argv=None) -> int:
     args = parse_args(argv)
+    if args.list_sampling:
+        for name, text in SAMPLING_METHODS.items():
+            print(f"{name:14s} {text}")
+        return 0
     log = (lambda *a: None) if args.quiet else (lambda *a: print(*a, flush=True))
+    cli_sampling = normalize_sampling(args.sampling)  # fail fast on a bad name
     optimizer = make_optimizer(args.algorithm)  # fail fast on a bad algorithm name
 
     with GrasshopperClient(args.host, args.port, timeout=args.timeout) as client:
@@ -625,25 +718,42 @@ def main(argv=None) -> int:
         else:
             n_runs = args.samples
             P = None
-        start = args.start
+        start = "sampled" if args.start == "lhs" else args.start
         if start == "auto":
-            start = "current" if n_par > 0 else "lhs"
+            start = "current" if n_par > 0 else "sampled"
 
-        # draw parameters and LHS starts jointly so the combined design is space-filling
-        d_joint = (n_par if P is None else 0) + (problem.n if start == "lhs" else 0)
-        if args.sampling == "lhs":
-            U = latin_hypercube(n_runs, d_joint, rng)
+        if cli_sampling:
+            sampling, sampling_source = cli_sampling, "--sampling"
+        elif info.get("sampling_method"):
+            sampling, sampling_source = normalize_sampling(info["sampling_method"]), "component Sampling Method"
         else:
-            U = rng.random((n_runs, d_joint))
+            sampling, sampling_source = "lhs", "default"
+
+        # draw parameters and sampled starts jointly so the combined design is space-filling
+        d_joint = (n_par if P is None else 0) + (problem.n if start == "sampled" else 0)
+        levels = None
+        if sampling == "grid":
+            if P is not None:
+                raise SystemExit("Grid sampling cannot be combined with --samples-csv (the CSV already fixes the samples).")
+            if d_joint == 0:
+                raise SystemExit("Grid sampling needs Sample Parameters or --start sampled.")
+            levels = grid_levels(args.grid_levels, n_runs, d_joint)
+            n_runs = int(np.prod(levels))
+        if d_joint or start == "sampled":
+            log(f"  sampling  : {sampling} (from {sampling_source}), {n_runs} run(s)"
+                + (f", grid levels {levels}" if levels else ""))
+        if sampling == "sobol" and n_runs & (n_runs - 1):
+            log(f"  note      : Sobol sequences are most uniform when the sample count is a power of 2 "
+                f"(e.g. {1 << max(0, n_runs.bit_length() - 1)} or {1 << n_runs.bit_length()}).")
+        U = sample_unit(sampling, n_runs, d_joint, rng, levels)
         col = 0
         if P is None:
             P = scale(U[:, :n_par], problem.parameters)
             col = n_par
-        if start in ("lhs", "random"):
-            if start == "random":
-                U0 = rng.random((n_runs, problem.n))
-            else:
-                U0 = U[:, col:col + problem.n]
+        if start == "sampled":
+            U0 = U[:, col:col + problem.n]
+        elif start == "random":
+            U0 = rng.random((n_runs, problem.n))
         elif start == "center":
             U0 = np.full((n_runs, problem.n), 0.5)
         else:
@@ -661,6 +771,8 @@ def main(argv=None) -> int:
             "types": problem.types,
             "settings": {k: v for k, v in vars(args).items()},
             "start_mode": start,
+            "sampling": sampling,
+            "grid_levels": levels,
         }
         meta_path = os.path.splitext(out_path)[0] + (f".meta.{run_offset}.json" if append else ".meta.json")
         with open(meta_path, "w", encoding="utf-8") as fh:

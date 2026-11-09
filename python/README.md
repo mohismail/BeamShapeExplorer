@@ -4,8 +4,9 @@ This tool runs many constrained shape optimizations of a Grasshopper definition 
 results to a CSV file. It follows the sample-collection method in the BSE *Accessible design
 methods* paper:
 
-1. Draw design-input samples (span, loads, f'c, …) inside their bounds with **Latin Hypercube
-   Sampling (LHS)**.
+1. Draw design-input samples (span, loads, f'c, …) inside their bounds. The default is **Latin
+   Hypercube Sampling (LHS)**, as in the paper; other sampling methods are available (see
+   [Sampling methods](#sampling-methods)).
 2. For each sample, hold the inputs fixed and run a **constrained optimization** (COBYLA by
    default) of the geometric design variables. The objective is minimized subject to the
    structural and other constraints computed by BSE.
@@ -41,6 +42,7 @@ Place **Optimization Sampler** on the canvas and wire it as follows.
 | **Port** | Integer | The default is 8765. It must match `--port` in Python. |
 | **Listen (L)** | **Boolean Toggle** | Set it to True to start the server. |
 | **Output Path (Out)** | *(optional)* Text, e.g. from a Panel | Where the results CSV is saved. It can be a file (`D:\studies\beam01\runs.csv`) or a folder, in which case the file is named `optimization_samples.csv`. A relative path such as `results\runs.csv` is resolved from the folder of the saved `.gh` file. Missing folders are created. |
+| **Sampling Method (SM)** | *(optional)* Text, e.g. from a Panel or a Value List | How the Sample Parameters are sampled: `lhs` (default), `lhs-optimized`, `lhs-centered`, `sobol`, `halton`, `random` or `grid`. See [Sampling methods](#sampling-methods). |
 
 The **Status** output also shows where the results will be saved. The **Status**, **Variable Names**, **Lower/Upper Bounds**, **Weighted Objective**,
 **Constraint Violation** and **Evaluations** outputs let you check the setup before you start
@@ -106,9 +108,10 @@ Common options (see `--help` for all of them):
 |---|---|---|
 | `--out PATH` | component Output Path | CSV file or folder for the results. Overrides the component's Output Path. |
 | `--samples N` | 50 | Number of optimization runs |
-| `--sampling lhs\|random` | `lhs` | How the Sample Parameters (and LHS start points) are drawn |
+| `--sampling METHOD` | component Sampling Method, else `lhs` | How the Sample Parameters (and sampled start points) are drawn. Overrides the component's Sampling Method. See [Sampling methods](#sampling-methods). |
+| `--grid-levels` | – | For `grid` only: levels per dimension, as one value (`5`) or one per dimension (`3,5,4`) |
 | `--samples-csv doe.csv` | – | Use an explicit design of experiments instead. Its columns must be named after the parameter sliders. |
-| `--start auto\|lhs\|random\|center\|current` | `auto` | Start point of each run. `auto` uses the current slider values when there are Sample Parameters. Without them it uses LHS start points, which gives a multi-start study of the same problem. |
+| `--start auto\|sampled\|random\|center\|current` | `auto` | Start point of each run. `sampled` draws the start points with the sampling method, together with the parameters (`lhs` is accepted as an older name). `auto` uses the current slider values when there are Sample Parameters. Without them it uses `sampled`, which gives a multi-start study of the same problem. |
 | `--algorithm` | `COBYLA` | `COBYLA`, `COBYQA`, `SLSQP`, `trust-constr` (SciPy) or `nlopt:LN_COBYLA`, `nlopt:LN_BOBYQA`, … |
 | `--maxiter` | 500 | Maximum iterations/evaluations per run |
 | `--tol` | 1e-4 | Convergence tolerance |
@@ -123,6 +126,29 @@ The optimizer works in normalized `[0, 1]` coordinates of each slider range, so 
 very different units are treated evenly. The variables never leave the slider bounds. When the
 study finishes or is interrupted, the driver restores the original slider values; use
 `--no-restore` to keep the last ones.
+
+### Sampling methods
+
+Choose the method with the component's **Sampling Method** input or with `--sampling`, which
+overrides the component. `--list-sampling` prints the list below.
+
+| Method | Description | When to use it |
+|---|---|---|
+| `lhs` (default) | Random Latin Hypercube: each parameter's range is split into N equal strata with exactly one sample in each. | The method in the BSE paper. A good general choice for surrogate-model training data. |
+| `lhs-optimized` | Latin Hypercube rearranged to fill the space more evenly (lower centered discrepancy) | Small to medium sample counts, where clusters and gaps matter most |
+| `lhs-centered` | Latin Hypercube with each sample at the center of its stratum | Even coverage without jitter inside each stratum |
+| `sobol` | Scrambled Sobol low-discrepancy sequence | Very even coverage, especially with many parameters. Use a power-of-2 sample count (64, 128, 256…); the driver reminds you if you don't. |
+| `halton` | Scrambled Halton low-discrepancy sequence | Similar to Sobol, with no power-of-2 preference |
+| `random` | Uniform random (Monte Carlo) | Baselines or unbiased random studies. Expect clusters and gaps. |
+| `grid` | Full-factorial grid that includes the slider Min and Max | Few parameters, or when results are needed on a regular grid (for example for contour plots) |
+
+All methods use `--seed`, so a study can be repeated exactly. Every method except `grid` uses
+`--samples` runs. A grid has *levels^dimensions* runs: by default the driver uses the largest
+equal number of levels that stays within `--samples`, with at least 2 levels. For example,
+`--samples 100` with 2 parameters gives a 10 × 10 grid. `--grid-levels` sets the levels
+directly, e.g. `--grid-levels 3,6` for 18 runs. The run count grows quickly with more
+parameters, and the driver prints it before starting. Grid sampling can't be combined with
+`--samples-csv`, because that CSV already fixes the samples.
 
 ### Output
 

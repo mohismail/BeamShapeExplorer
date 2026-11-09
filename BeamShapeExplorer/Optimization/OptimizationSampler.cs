@@ -44,6 +44,7 @@ namespace BeamShapeExplorer.Optimization
         private const int InPort = 7;
         private const int InListen = 8;
         private const int InOutput = 9;
+        private const int InSampling = 10;
 
         private const int DefaultPort = 8765;
         private const int DefaultTimeoutMs = 10 * 60 * 1000;
@@ -63,6 +64,7 @@ namespace BeamShapeExplorer.Optimization
         private int _solveCount;
         private int _evaluationCount;
         private volatile string _outputPath = "";
+        private volatile string _samplingMethod = "";
 
         private sealed class Snapshot
         {
@@ -125,7 +127,14 @@ namespace BeamShapeExplorer.Optimization
             for (int i = InParameters; i <= InTypes; i++)
                 if (i != InObjectives) pManager[i].Optional = true;
             pManager[InVariables].Optional = true;
+            pManager.AddTextParameter("Sampling Method", "SM",
+                "(Optional) How the Python driver samples the Sample Parameters between runs: " +
+                "lhs (Latin Hypercube, default), lhs-optimized, lhs-centered, sobol, halton, random, or grid " +
+                "(full factorial). The driver's --sampling option overrides this.",
+                GH_ParamAccess.item);
+
             pManager[InOutput].Optional = true;
+            pManager[InSampling].Optional = true;
         }
 
         protected override void RegisterOutputParams(GH_Component.GH_OutputParamManager pManager)
@@ -157,6 +166,16 @@ namespace BeamShapeExplorer.Optimization
             string outputPath = "";
             DA.GetData(InOutput, ref outputPath);
             _outputPath = ResolveOutputPath(outputPath);
+            string sampling = "";
+            DA.GetData(InSampling, ref sampling);
+            string samplingKey = NormalizeSampling(sampling);
+            if (samplingKey == null)
+            {
+                AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "Unknown Sampling Method \"" + sampling +
+                    "\". Use one of: " + string.Join(", ", SamplingMethods) + ".");
+                samplingKey = "";
+            }
+            _samplingMethod = samplingKey;
 
             // validate constraint types
             for (int i = 0; i < types.Count; i++)
@@ -229,6 +248,7 @@ namespace BeamShapeExplorer.Optimization
             status.Add(vars.Count + " variable(s), " + pars.Count + " sample parameter(s), " +
                        objectives.Count + " objective(s), " + constraints.Count + " constraint(s)");
             if (_serverError != null) status.Add("Error: " + _serverError);
+            status.Add("Sampling method: " + (_samplingMethod.Length > 0 ? _samplingMethod : "lhs (default)"));
             status.Add(_outputPath.Length > 0
                 ? "Results will be saved to: " + _outputPath
                 : "Output Path not set: the driver uses its --out option (default optimization_samples.csv in its working folder)");
@@ -294,6 +314,25 @@ namespace BeamShapeExplorer.Optimization
                         "Output Path is relative and this definition is unsaved; it will be resolved from the Python driver's working folder.");
             }
             return path;
+        }
+
+        private static readonly string[] SamplingMethods =
+            { "lhs", "lhs-optimized", "lhs-centered", "sobol", "halton", "random", "grid" };
+
+        /// <summary>Returns the canonical sampling method name, "" when not set, or null when unknown.</summary>
+        private static string NormalizeSampling(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name)) return "";
+            string key = name.Trim().ToLowerInvariant().Replace('_', '-').Replace(' ', '-');
+            switch (key)
+            {
+                case "latin": case "latin-hypercube": key = "lhs"; break;
+                case "lhs-maximin": case "optimized-lhs": key = "lhs-optimized"; break;
+                case "centered-lhs": key = "lhs-centered"; break;
+                case "monte-carlo": case "montecarlo": case "uniform": case "mc": key = "random"; break;
+                case "factorial": case "full-factorial": key = "grid"; break;
+            }
+            return Array.IndexOf(SamplingMethods, key) >= 0 ? key : null;
         }
 
         private static List<T> Expand<T>(List<T> values, int count, T fallback)
@@ -561,6 +600,7 @@ namespace BeamShapeExplorer.Optimization
                 { "ok", true },
                 { "document", OnPingDocument()?.DisplayName ?? "" },
                 { "output_path", _outputPath },
+                { "sampling_method", _samplingMethod },
                 { "variables", vars.Select((s, i) => SliderInfo(s, varNames[i])).ToList() },
                 { "parameters", pars.Select((s, i) => SliderInfo(s, parNames[i])).ToList() },
                 { "objective_names", snap.ObjectiveNames },
