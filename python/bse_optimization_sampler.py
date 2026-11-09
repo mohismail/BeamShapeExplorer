@@ -515,6 +515,26 @@ def csv_row(run: int, problem: GrasshopperProblem, p: np.ndarray, x0: np.ndarray
 # ============================================================================ main
 
 
+DEFAULT_CSV_NAME = "optimization_samples.csv"
+
+
+def resolve_out_path(cli_out: Optional[str], component_out: Optional[str]) -> Tuple[str, str]:
+    """Pick the CSV path: --out first, then the component's Output Path, then the default.
+
+    A folder (existing directory, trailing slash, or a path without a file extension) gets the
+    default file name. Returns (absolute path, source description)."""
+    if cli_out:
+        path, source = cli_out, "--out"
+    elif component_out:
+        path, source = component_out, "component Output Path"
+    else:
+        path, source = DEFAULT_CSV_NAME, "default"
+    path = os.path.expanduser(os.path.expandvars(path.strip().strip('"')))
+    if os.path.isdir(path) or path.endswith(("/", "\\")) or not os.path.splitext(path)[1]:
+        path = os.path.join(path, DEFAULT_CSV_NAME)
+    return os.path.abspath(path), source
+
+
 def parse_args(argv=None) -> argparse.Namespace:
     ap = argparse.ArgumentParser(
         description="Sample many constrained optimization runs of a Grasshopper definition "
@@ -522,7 +542,9 @@ def parse_args(argv=None) -> argparse.Namespace:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=8765, help="must match the component's Port input")
-    ap.add_argument("--out", default="optimization_samples.csv", help="output CSV path")
+    ap.add_argument("--out", default=None,
+                    help="output CSV file or folder. Overrides the component's Output Path input; if neither is set, "
+                         f"{DEFAULT_CSV_NAME} is written to the current folder")
     ap.add_argument("--append", action="store_true", help="append to an existing CSV instead of overwriting")
     ap.add_argument("--samples", type=int, default=50, help="number of optimization runs")
     ap.add_argument("--sampling", choices=["lhs", "random"], default="lhs",
@@ -578,16 +600,18 @@ def main(argv=None) -> int:
                     "optimizers early; increase the slider's decimal places (5+ recommended).")
 
         # ---- output files
-        out_dir = os.path.dirname(os.path.abspath(args.out))
+        out_path, out_source = resolve_out_path(args.out, info.get("output_path"))
+        log(f"  output    : {out_path} (from {out_source})")
+        out_dir = os.path.dirname(out_path)
         os.makedirs(out_dir, exist_ok=True)
         header = csv_header(problem)
-        append = args.append and os.path.exists(args.out) and os.path.getsize(args.out) > 0
+        append = args.append and os.path.exists(out_path) and os.path.getsize(out_path) > 0
         run_offset = 0
         if append:
-            with open(args.out, newline="", encoding="utf-8") as fh:
+            with open(out_path, newline="", encoding="utf-8") as fh:
                 existing = list(csv.reader(fh))
             if existing[0] != header:
-                raise ValueError(f"Cannot append: {args.out} has different columns than the current definition.")
+                raise ValueError(f"Cannot append: {out_path} has different columns than the current definition.")
             run_offset = len(existing) - 1
 
         # different seed stream per appended batch so samples are not repeated
@@ -638,14 +662,14 @@ def main(argv=None) -> int:
             "settings": {k: v for k, v in vars(args).items()},
             "start_mode": start,
         }
-        meta_path = os.path.splitext(args.out)[0] + (f".meta.{run_offset}.json" if append else ".meta.json")
+        meta_path = os.path.splitext(out_path)[0] + (f".meta.{run_offset}.json" if append else ".meta.json")
         with open(meta_path, "w", encoding="utf-8") as fh:
             json.dump(meta, fh, indent=2, default=str)
 
         n_feasible = 0
         t_all = time.perf_counter()
         try:
-            with open(args.out, "a" if append else "w", newline="", encoding="utf-8") as fh:
+            with open(out_path, "a" if append else "w", newline="", encoding="utf-8") as fh:
                 writer = csv.writer(fh)
                 if not append:
                     writer.writerow(header)
@@ -690,7 +714,7 @@ def main(argv=None) -> int:
                 except Exception as err:
                     log(f"Could not restore slider values: {err}")
 
-        log(f"Done: {n_feasible} feasible run(s), total {time.perf_counter() - t_all:.1f}s -> {os.path.abspath(args.out)}")
+        log(f"Done: {n_feasible} feasible run(s), total {time.perf_counter() - t_all:.1f}s -> {out_path}")
     return 0
 
 

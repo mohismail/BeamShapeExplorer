@@ -40,8 +40,9 @@ Place **Optimization Sampler** on the canvas and wire it as follows.
 | **Constraint Types (CT)** | *(optional)* Text: `<=`, `>=` or `=` | The default is `<=`. The last value repeats. |
 | **Port** | Integer | The default is 8765. It must match `--port` in Python. |
 | **Listen (L)** | **Boolean Toggle** | Set it to True to start the server. |
+| **Output Path (Out)** | *(optional)* Text, e.g. from a Panel | Where the results CSV is saved. It can be a file (`D:\studies\beam01\runs.csv`) or a folder, in which case the file is named `optimization_samples.csv`. A relative path such as `results\runs.csv` is resolved from the folder of the saved `.gh` file. Missing folders are created. |
 
-The **Status**, **Variable Names**, **Lower/Upper Bounds**, **Weighted Objective**,
+The **Status** output also shows where the results will be saved. The **Status**, **Variable Names**, **Lower/Upper Bounds**, **Weighted Objective**,
 **Constraint Violation** and **Evaluations** outputs let you check the setup before you start
 the Python driver.
 
@@ -86,13 +87,24 @@ pip install nlopt
 2. Run the driver:
 
 ```bash
+python python/bse_optimization_sampler.py --samples 200
+```
+
+The results are saved to the component's **Output Path**. To save them somewhere else for one
+study, pass `--out`, which overrides the component:
+
+```bash
 python python/bse_optimization_sampler.py --samples 200 --out results/runs.csv
 ```
+
+If neither is set, the driver writes `optimization_samples.csv` in the folder it was run from.
+The driver prints the location it uses, and where that location came from, when it starts.
 
 Common options (see `--help` for all of them):
 
 | Option | Default | Meaning |
 |---|---|---|
+| `--out PATH` | component Output Path | CSV file or folder for the results. Overrides the component's Output Path. |
 | `--samples N` | 50 | Number of optimization runs |
 | `--sampling lhs\|random` | `lhs` | How the Sample Parameters (and LHS start points) are drawn |
 | `--samples-csv doe.csv` | – | Use an explicit design of experiments instead. Its columns must be named after the parameter sliders. |
@@ -162,7 +174,7 @@ object per line. Every reply has `"ok": true|false`; a failed request also has `
 | `cmd` | Request fields | Reply |
 |---|---|---|
 | `ping` | – | `{"ok":true,"message":"pong"}` |
-| `info` | – | `variables` / `parameters` (`name`, `min`, `max`, `value`, `decimals`, `integer`), `objective_names`, `weights`, `objectives`, `constraint_names`, `limits`, `types`, `constraints` |
+| `info` | – | `document`, `output_path`, `variables` / `parameters` (`name`, `min`, `max`, `value`, `decimals`, `integer`), `objective_names`, `weights`, `objectives`, `constraint_names`, `limits`, `types`, `constraints` |
 | `evaluate` | `variables: [..]`, optional `parameters: [..]`, optional `timeout` (s) | Sets the sliders, solves once and returns the applied `variables`/`parameters`, `objectives`, `weights`, `objective`, `constraints`, `limits`, `types`, `violations`, `solve_time`, `gh_errors`, `evaluation` |
 | `set` | Same as `evaluate` | Same as `evaluate`, but the call does not add to the evaluation counter (used to restore the sliders) |
 | `close` | – | Closes the connection |

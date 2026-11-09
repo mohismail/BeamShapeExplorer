@@ -43,6 +43,7 @@ namespace BeamShapeExplorer.Optimization
         private const int InTypes = 6;
         private const int InPort = 7;
         private const int InListen = 8;
+        private const int InOutput = 9;
 
         private const int DefaultPort = 8765;
         private const int DefaultTimeoutMs = 10 * 60 * 1000;
@@ -61,6 +62,7 @@ namespace BeamShapeExplorer.Optimization
         private Snapshot _snapshot = new Snapshot();
         private int _solveCount;
         private int _evaluationCount;
+        private volatile string _outputPath = "";
 
         private sealed class Snapshot
         {
@@ -114,10 +116,16 @@ namespace BeamShapeExplorer.Optimization
                 "Localhost TCP port the Python driver connects to.", GH_ParamAccess.item, DefaultPort);
             pManager.AddBooleanParameter("Listen", "L",
                 "Set to true to start listening for the Python driver (use a Boolean Toggle).", GH_ParamAccess.item, false);
+            pManager.AddTextParameter("Output Path", "Out",
+                "(Optional) Where the Python driver saves the results CSV. Either a file path (e.g. D:\\study\\runs.csv) " +
+                "or a folder (the file is then named optimization_samples.csv). Relative paths are resolved from the " +
+                "folder of this .gh file. Missing folders are created. The driver's --out option overrides this.",
+                GH_ParamAccess.item);
 
             for (int i = InParameters; i <= InTypes; i++)
                 if (i != InObjectives) pManager[i].Optional = true;
             pManager[InVariables].Optional = true;
+            pManager[InOutput].Optional = true;
         }
 
         protected override void RegisterOutputParams(GH_Component.GH_OutputParamManager pManager)
@@ -146,6 +154,9 @@ namespace BeamShapeExplorer.Optimization
             bool listen = false;
             DA.GetData(InPort, ref port);
             DA.GetData(InListen, ref listen);
+            string outputPath = "";
+            DA.GetData(InOutput, ref outputPath);
+            _outputPath = ResolveOutputPath(outputPath);
 
             // validate constraint types
             for (int i = 0; i < types.Count; i++)
@@ -218,6 +229,9 @@ namespace BeamShapeExplorer.Optimization
             status.Add(vars.Count + " variable(s), " + pars.Count + " sample parameter(s), " +
                        objectives.Count + " objective(s), " + constraints.Count + " constraint(s)");
             if (_serverError != null) status.Add("Error: " + _serverError);
+            status.Add(_outputPath.Length > 0
+                ? "Results will be saved to: " + _outputPath
+                : "Output Path not set: the driver uses its --out option (default optimization_samples.csv in its working folder)");
 
             var violations = new List<double>();
             for (int i = 0; i < constraints.Count; i++)
@@ -255,6 +269,31 @@ namespace BeamShapeExplorer.Optimization
                 foreach (GH_String s in branch)
                     if (s != null) result.Add(s.Value);
             return result;
+        }
+
+        /// <summary>
+        /// Resolves the Output Path input: relative paths are taken relative to the saved .gh file's folder
+        /// (left relative if the document is unsaved, so the driver resolves them from its working folder).
+        /// </summary>
+        private string ResolveOutputPath(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path)) return "";
+            path = Environment.ExpandEnvironmentVariables(path.Trim().Trim('"'));
+            if (path.IndexOfAny(Path.GetInvalidPathChars()) >= 0)
+            {
+                AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "Output Path contains invalid characters.");
+                return "";
+            }
+            if (!Path.IsPathRooted(path))
+            {
+                string ghFile = OnPingDocument()?.FilePath;
+                if (!string.IsNullOrEmpty(ghFile))
+                    path = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(ghFile), path));
+                else
+                    AddRuntimeMessage(GH_RuntimeMessageLevel.Remark,
+                        "Output Path is relative and this definition is unsaved; it will be resolved from the Python driver's working folder.");
+            }
+            return path;
         }
 
         private static List<T> Expand<T>(List<T> values, int count, T fallback)
@@ -521,6 +560,7 @@ namespace BeamShapeExplorer.Optimization
             {
                 { "ok", true },
                 { "document", OnPingDocument()?.DisplayName ?? "" },
+                { "output_path", _outputPath },
                 { "variables", vars.Select((s, i) => SliderInfo(s, varNames[i])).ToList() },
                 { "parameters", pars.Select((s, i) => SliderInfo(s, parNames[i])).ToList() },
                 { "objective_names", snap.ObjectiveNames },
