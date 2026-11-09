@@ -2,24 +2,27 @@
 
 This tool runs many constrained shape optimizations of a Grasshopper definition and saves the
 results to a CSV file. It follows the sample-collection method in the BSE *Accessible design
-methods* paper:
+methods* paper, split into two separate steps:
 
-1. Draw design-input samples (span, loads, f'c, …) inside their bounds. The default is **Latin
-   Hypercube Sampling (LHS)**, as in the paper; other sampling methods are available (see
-   [Sampling methods](#sampling-methods)).
-2. For each sample, hold the inputs fixed and run a **constrained optimization** (COBYLA by
-   default) of the geometric design variables. The objective is minimized subject to the
-   structural and other constraints computed by BSE.
-3. Write one CSV row per run. Each row holds the inputs, the final variables, the final objective
-   and constraint values, a success/status code and the run time. You can use the rows as
-   training data for a surrogate model (for example, a neural network).
+1. **Sampling plan** (`sampling_plan.py`): draw design-input samples (span, loads, f'c, …)
+   inside their bounds and pick a start point for each run. The default is **Latin Hypercube
+   Sampling (LHS)**, as in the paper; other sampling methods are available (see
+   [Sampling methods](#sampling-methods)). The plan is saved as a CSV that you can review, plot,
+   edit or replace before anything is optimized.
+2. **Optimization sampling** (`bse_optimization_sampler.py`): for each plan row, hold the
+   inputs fixed and run a **constrained optimization** (COBYLA by default) of the geometric
+   design variables. The objective is minimized subject to the structural and other constraints
+   computed by BSE. The driver writes one CSV row per run, with the inputs, the final variables,
+   the final objective and constraint values, a success/status code and the run time. You can
+   use the rows as training data for a surrogate model (for example, a neural network).
 
-There are two parts:
+There are three parts:
 
 | Part | Where | Role |
 |---|---|---|
 | **Optimization Sampler** component | `BeamShapeExplorer/Optimization/OptimizationSampler.cs` (tab *Beam Shape Explorer → Optimization*) | Reads the variable and parameter sliders, collects the objectives and constraints, and serves them on a localhost TCP socket. |
-| **Python driver** | `python/bse_optimization_sampler.py` | Connects to the component, samples the runs, runs the optimizers through Grasshopper/Rhino and writes the CSV. |
+| **Sampling plan script** | `python/sampling_plan.py` | Step 1: reads the slider bounds from the component (or from a saved `.meta.json`) and writes the sampling plan CSV. It doesn't change anything in the definition. |
+| **Python driver** | `python/bse_optimization_sampler.py` | Step 2: connects to the component, runs an optimization for every plan row through Grasshopper/Rhino and writes the results CSV. |
 
 The paper linked Grasshopper and NLopt with Socket.IO. This implementation uses plain TCP with
 newline-delimited JSON instead, so there are no extra dependencies on either side.
@@ -197,55 +200,71 @@ conda install -c conda-forge nlopt
 
 ## 3. Running
 
+Before either step:
+
 1. Open the definition in Rhino/Grasshopper and set **Listen** to True. The component message reads `Listening :8765`.
 2. Open a terminal in the repository folder and activate the virtual environment
    (`.venv\Scripts\Activate.ps1` on Windows, `source .venv/bin/activate` on macOS; see
    [Python environment setup](#2-python-environment-setup)).
-3. Run the driver:
+
+### Step 1 – Create the sampling plan
 
 ```bash
-python python/bse_optimization_sampler.py --samples 200
+python python/sampling_plan.py --samples 200 --sampling lhs --out study/plan.csv
 ```
 
-The results are saved to the component's **Output Path**. To save them somewhere else for one
-study, pass `--out`, which overrides the component:
+The script reads the slider names and bounds from the component, prints a preview of the first
+rows, and writes two files:
 
-```bash
-python python/bse_optimization_sampler.py --samples 200 --out results/runs.csv
-```
+* `plan.csv`, with one row per optimization run:
 
-If neither is set, the driver writes `optimization_samples.csv` in the folder it was run from.
-The driver prints the location it uses, and where that location came from, when it starts.
+  | Column | Content |
+  |---|---|
+  | `run` | Run number. It becomes the `run` column of the results. |
+  | `param:<name>` | Value of each Sample Parameter slider, held fixed during that run |
+  | `x0:<name>` | Start value of each Variable slider for that run |
 
-Common options (see `--help` for all of them):
+* `plan.meta.json`, with the bounds and the settings used (method, start mode, seed, grid levels).
+
+Plan options (see `python python/sampling_plan.py --help`):
 
 | Option | Default | Meaning |
 |---|---|---|
-| `--out PATH` | component Output Path | CSV file or folder for the results. Overrides the component's Output Path. |
-| `--samples N` | 50 | Number of optimization runs |
-| `--sampling METHOD` | component Sampling Method, else `lhs` | How the Sample Parameters (and sampled start points) are drawn. Overrides the component's Sampling Method. See [Sampling methods](#sampling-methods). |
+| `--out FILE` | `sampling_plan.csv` | Plan CSV to write |
+| `--samples N` | 50 | Number of runs in the plan |
+| `--sampling METHOD` | component Sampling Method, else `lhs` | How the parameters (and sampled start points) are drawn. Overrides the component's Sampling Method. See [Sampling methods](#sampling-methods). |
 | `--grid-levels` | – | For `grid` only: levels per dimension, as one value (`5`) or one per dimension (`3,5,4`) |
-| `--samples-csv doe.csv` | – | Use an explicit design of experiments instead. Its columns must be named after the parameter sliders. |
-| `--start auto\|sampled\|random\|center\|current` | `auto` | Start point of each run. `sampled` draws the start points with the sampling method, together with the parameters (`lhs` is accepted as an older name). `auto` uses the current slider values when there are Sample Parameters. Without them it uses `sampled`, which gives a multi-start study of the same problem. |
-| `--algorithm` | `COBYLA` | `COBYLA`, `COBYQA`, `SLSQP`, `trust-constr` (SciPy) or `nlopt:LN_COBYLA`, `nlopt:LN_BOBYQA`, … |
-| `--maxiter` | 500 | Maximum iterations/evaluations per run |
-| `--tol` | 1e-4 | Convergence tolerance |
-| `--rhobeg` | 0.1 | Initial step as a fraction of each slider's range (COBYLA/COBYQA/NLopt) |
-| `--feas-tol` | 1e-4 | Largest constraint violation still counted as feasible |
-| `--fail-on-gh-error` | off | Treat a solution as failed if any Grasshopper component shows an error |
-| `--append` | off | Add rows to an existing CSV, e.g. to continue a long study. Appended batches use a different seed stream, so samples are not repeated. |
-| `--seed` | 0 | Random seed |
-| `--port`, `--host`, `--timeout` | 8765, 127.0.0.1, 600 s | Connection settings |
+| `--start auto\|sampled\|random\|center\|current` | `auto` | Start point of each run. `sampled` draws the start points with the sampling method, together with the parameters (`lhs` is accepted as an older name). `current` uses the slider values at the time the plan is made. `auto` uses `current` when there are Sample Parameters; without them it uses `sampled`, which gives a multi-start study of the same problem. |
+| `--seed` | 0 | Random seed. The same settings and seed always give the same plan. |
+| `--from-meta FILE` | – | Read the slider bounds from a `.meta.json` written by an earlier plan or study, instead of connecting to Grasshopper. This makes plans without Rhino running. |
+| `--preview N` | 5 | Number of rows to print |
+| `--port`, `--host`, `--timeout` | 8765, 127.0.0.1, 60 s | Connection settings |
 
-The optimizer works in normalized `[0, 1]` coordinates of each slider range, so variables with
-very different units are treated evenly. The variables never leave the slider bounds. When the
-study finishes or is interrupted, the driver restores the original slider values; use
-`--no-restore` to keep the last ones.
+#### Editing or writing a plan yourself
+
+A plan is an ordinary CSV, so you can open it in Excel, delete or add rows, or create one with
+another tool. When the driver reads a plan, it checks it against the definition:
+
+* Every Sample Parameter needs a column, named `param:<name>` or just `<name>`.
+* `x0:<name>` columns are optional. A missing column or blank cell means "start from the current
+  slider value".
+* The `run` column is optional; without it, the rows are numbered from 0. Run numbers must be unique.
+* Values outside the slider bounds are clipped to them, and unknown columns (for example your own
+  notes) are ignored. The driver reports both before it starts.
+
+For example, this is a valid plan for a definition with `L` and `w` parameters:
+
+```csv
+L,w
+6,10
+8,20
+10,30
+```
 
 ### Sampling methods
 
 Choose the method with the component's **Sampling Method** input or with `--sampling`, which
-overrides the component. `--list-sampling` prints the list below.
+overrides the component. `python python/sampling_plan.py --list-sampling` prints the list below.
 
 | Method | Description | When to use it |
 |---|---|---|
@@ -262,18 +281,76 @@ All methods use `--seed`, so a study can be repeated exactly. Every method excep
 equal number of levels that stays within `--samples`, with at least 2 levels. For example,
 `--samples 100` with 2 parameters gives a 10 × 10 grid. `--grid-levels` sets the levels
 directly, e.g. `--grid-levels 3,6` for 18 runs. The run count grows quickly with more
-parameters, and the driver prints it before starting. Grid sampling can't be combined with
-`--samples-csv`, because that CSV already fixes the samples.
+parameters, and the plan preview shows it before anything runs.
+
+### Step 2 – Run the optimizations
+
+```bash
+python python/bse_optimization_sampler.py --plan study/plan.csv --out study/runs.csv
+```
+
+The driver runs one constrained optimization per plan row and writes the results to the
+component's **Output Path**. `--out` overrides the component. If neither is set, the driver
+writes `optimization_samples.csv` in the folder it was run from. It prints the location it uses,
+and where that location came from, when it starts.
+
+Optimization options (see `python python/bse_optimization_sampler.py --help`):
+
+| Option | Default | Meaning |
+|---|---|---|
+| `--plan FILE` | – | The sampling plan to run. Without it, see [One-step shortcut](#one-step-shortcut). |
+| `--out PATH` | component Output Path | CSV file or folder for the results. Overrides the component's Output Path. |
+| `--resume` | off | Continue an interrupted study: skip the plan runs already in the results CSV and append the rest. See [Resuming](#resuming-an-interrupted-study). |
+| `--append` | off | Add the rows to an existing results CSV instead of overwriting it |
+| `--algorithm` | `COBYLA` | `COBYLA`, `COBYQA`, `SLSQP`, `trust-constr` (SciPy) or `nlopt:LN_COBYLA`, `nlopt:LN_BOBYQA`, … |
+| `--maxiter` | 500 | Maximum iterations/evaluations per run |
+| `--tol` | 1e-4 | Convergence tolerance |
+| `--rhobeg` | 0.1 | Initial step as a fraction of each slider's range (COBYLA/COBYQA/NLopt) |
+| `--feas-tol` | 1e-4 | Largest constraint violation still counted as feasible |
+| `--fail-on-gh-error` | off | Treat a solution as failed if any Grasshopper component shows an error |
+| `--port`, `--host`, `--timeout` | 8765, 127.0.0.1, 600 s | Connection settings |
+
+The optimizer works in normalized `[0, 1]` coordinates of each slider range, so variables with
+very different units are treated evenly. The variables never leave the slider bounds. When the
+study finishes or is interrupted, the driver restores the original slider values; use
+`--no-restore` to keep the last ones.
+
+### One-step shortcut
+
+If you don't need to review the plan first, leave out `--plan`. The driver then makes the plan
+itself, with the same options as `sampling_plan.py` (`--samples`, `--sampling`, `--grid-levels`,
+`--start`, `--seed`):
+
+```bash
+python python/bse_optimization_sampler.py --samples 200 --sampling sobol --out study/runs.csv
+```
+
+The plan is still saved separately, as `study/runs.plan.csv` next to the results, so you can
+inspect it later, rerun it with `--plan`, or resume from it. With `--append`, each new batch gets
+its own seed stream, run numbers that continue from the existing results, and its own plan file
+(`runs.plan.<first run>.csv`), so samples are not repeated.
+
+### Resuming an interrupted study
+
+Results are saved after every run, so an interrupted study (Ctrl+C, a Rhino crash, a power cut)
+loses at most the run in progress. To finish it, run the same command again with `--resume`:
+
+```bash
+python python/bse_optimization_sampler.py --plan study/plan.csv --out study/runs.csv --resume
+```
+
+The driver skips every run number that is already in `runs.csv` and appends the rest. Without
+`--plan`, it uses the `runs.plan.csv` saved next to the results.
 
 ### Output
 
-`runs.csv` contains one row per optimization run:
+`runs.csv` contains one row per optimization run of the plan:
 
 | Column(s) | Content |
 |---|---|
-| `run` | Run index |
+| `run` | Run number from the plan |
 | `param:<name>` | Sample parameter values used, after slider rounding |
-| `x0:<name>` | Start point of the variables |
+| `x0:<name>` | Start point of the variables, from the plan |
 | `x:<name>` | Final variable values, as applied to the sliders |
 | `objective` | Final weighted objective |
 | `obj:<name>` | Each final objective value |
@@ -290,7 +367,8 @@ parameters, and the driver prints it before starting. Grid sampling can't be com
 
 The driver writes and flushes each row as soon as its run finishes, so a crash or Ctrl+C keeps
 the completed runs. It also writes `runs.meta.json` next to the CSV with the bounds, names,
-constraint types/limits and settings, which you can reuse when you fit a surrogate model.
+constraint types/limits, settings and the plan that was run, which you can reuse when you fit a
+surrogate model.
 
 ## 4. Testing without Rhino
 
@@ -304,7 +382,11 @@ python python/mock_gh_server.py --port 8765
 Then, in a second terminal:
 
 ```bash
-python python/bse_optimization_sampler.py --port 8765 --samples 10 --out mock_runs.csv
+python python/sampling_plan.py --port 8765 --samples 10 --out mock_plan.csv
+```
+
+```bash
+python python/bse_optimization_sampler.py --port 8765 --plan mock_plan.csv --out mock_runs.csv
 ```
 
 ## 5. Protocol (for custom drivers)

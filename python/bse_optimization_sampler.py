@@ -3,19 +3,25 @@
 BSE Optimization Sampler - Python driver
 ========================================
 
-Samples many constrained optimization runs of a Grasshopper definition, following the
-data-collection method of the Beam Shape Explorer (BSE) surrogate-modelling workflow:
+Runs a batch of constrained optimizations of a Grasshopper definition, following the
+data-collection method of the Beam Shape Explorer (BSE) surrogate-modelling workflow.
+This is step 2; step 1, the sampling plan, is separate (sampling_plan.py):
 
-    1. Draw N samples of the *design inputs* (the "Sample Parameters" sliders) with
-       Latin Hypercube Sampling (LHS) inside the slider Min/Max limits.
-    2. For every sample, hold the design inputs fixed and run a constrained optimization
+    1. Sampling plan: N samples of the *design inputs* (the "Sample Parameters" sliders)
+       inside the slider Min/Max limits, plus a start point for each run.
+    2. For every plan row, hold the design inputs fixed and run a constrained optimization
        (COBYLA by default) over the *design variables* (the "Variables" sliders), whose
        bounds are the slider Min/Max limits.
     3. Save one CSV row per run with the sample inputs, start point, final variables,
        final objective(s), constraint values, success/status code and run time.
 
 The Grasshopper side is the "Optimization Sampler" component (Beam Shape Explorer >
-Optimization). Set its Listen input to True, then run, for example:
+Optimization). Set its Listen input to True, then either run a plan made beforehand:
+
+    python sampling_plan.py --samples 100 --out plan.csv
+    python bse_optimization_sampler.py --plan plan.csv --out runs.csv
+
+or let the driver make the plan itself (it is saved next to the results as runs.plan.csv):
 
     python bse_optimization_sampler.py --samples 100 --out runs.csv
 
@@ -37,6 +43,9 @@ from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
+
+from sampling_plan import (Plan, Slider, add_plan_arguments, log_plan, make_plan, normalize_sampling,
+                           print_sampling_methods, read_plan, resolve_sampling, write_plan)
 
 try:
     import scipy
@@ -131,23 +140,6 @@ def _floats(values, n: Optional[int] = None) -> np.ndarray:
         out[: min(n, arr.size)] = arr[: min(n, arr.size)]
         arr = out
     return arr
-
-
-@dataclass
-class Slider:
-    name: str
-    lo: float
-    hi: float
-    value: float
-    decimals: int = 3
-    integer: bool = False
-
-    @classmethod
-    def from_info(cls, d: dict) -> "Slider":
-        lo, hi = float(d["min"]), float(d["max"])
-        if hi < lo:
-            lo, hi = hi, lo
-        return cls(d["name"], lo, hi, float(d["value"]), int(d.get("decimals", 3)), bool(d.get("integer", False)))
 
 
 @dataclass
@@ -302,118 +294,6 @@ class GrasshopperProblem:
 
     def eq_index(self) -> np.ndarray:
         return np.array([i for i, t in enumerate(self.types) if t == "="], dtype=int)
-
-
-# ============================================================================ sampling
-
-
-def latin_hypercube(n: int, d: int, rng: np.random.Generator) -> np.ndarray:
-    """Random Latin Hypercube sample in [0, 1)^d with n points (one point per stratum per dimension)."""
-    if d == 0:
-        return np.zeros((n, 0))
-    u = (rng.random((n, d)) + np.arange(n)[:, None]) / n
-    for j in range(d):
-        u[:, j] = u[rng.permutation(n), j]
-    return u
-
-
-SAMPLING_METHODS = {
-    "lhs": "Latin Hypercube, random point inside each stratum (the method used in the BSE paper)",
-    "lhs-optimized": "Latin Hypercube optimized for space filling (lower centered discrepancy)",
-    "lhs-centered": "Latin Hypercube with every point at the center of its stratum",
-    "sobol": "Scrambled Sobol low-discrepancy sequence (best with a power-of-2 sample count)",
-    "halton": "Scrambled Halton low-discrepancy sequence",
-    "random": "Uniform random (Monte Carlo)",
-    "grid": "Full-factorial grid including the slider bounds (levels^dimensions runs)",
-}
-_SAMPLING_ALIASES = {"latin": "lhs", "latin-hypercube": "lhs", "lhs-maximin": "lhs-optimized",
-                     "optimized-lhs": "lhs-optimized", "centered-lhs": "lhs-centered", "monte-carlo": "random",
-                     "montecarlo": "random", "uniform": "random", "mc": "random", "factorial": "grid",
-                     "full-factorial": "grid"}
-
-
-def normalize_sampling(name: Optional[str]) -> Optional[str]:
-    if not name or not str(name).strip():
-        return None
-    key = str(name).strip().lower().replace("_", "-").replace(" ", "-")
-    key = _SAMPLING_ALIASES.get(key, key)
-    if key not in SAMPLING_METHODS:
-        raise SystemExit(f"Unknown sampling method '{name}'. Choose one of: {', '.join(SAMPLING_METHODS)}.")
-    return key
-
-
-def _qmc_engine(cls, d: int, rng: np.random.Generator, **kwargs):
-    seed = int(rng.integers(2 ** 32))
-    try:
-        return cls(d, rng=seed, **kwargs)   # scipy >= 1.15
-    except TypeError:
-        return cls(d, seed=seed, **kwargs)  # older scipy
-
-
-def grid_levels(levels_arg: Optional[str], n_target: int, d: int) -> List[int]:
-    """Levels per dimension for a full-factorial grid: from --grid-levels, or the largest even split of --samples."""
-    if levels_arg:
-        levels = [int(v) for v in str(levels_arg).replace(";", ",").split(",") if v.strip()]
-        if len(levels) == 1:
-            levels = levels * d
-        if len(levels) != d or any(v < 1 for v in levels):
-            raise SystemExit(f"--grid-levels needs one value or {d} comma-separated values >= 1.")
-        return levels
-    k = max(2, int(math.floor(n_target ** (1.0 / d) + 1e-9))) if d else 1
-    return [k] * d
-
-
-def sample_unit(method: str, n: int, d: int, rng: np.random.Generator,
-                levels: Optional[List[int]] = None) -> np.ndarray:
-    """Sample points in the unit hypercube [0, 1]^d. For 'grid' the number of rows is prod(levels), not n."""
-    if method == "grid":
-        if d == 0:
-            return np.zeros((n, 0))
-        axes = [np.linspace(0.0, 1.0, k) if k > 1 else np.array([0.5]) for k in levels]
-        mesh = np.meshgrid(*axes, indexing="ij")
-        return np.stack([m.ravel() for m in mesh], axis=1)
-    if d == 0:
-        return np.zeros((n, 0))
-    if method == "lhs":
-        return latin_hypercube(n, d, rng)
-    if method == "random":
-        return rng.random((n, d))
-    try:
-        from scipy.stats import qmc
-    except ImportError as err:  # scipy too old
-        raise SystemExit(f"Sampling method '{method}' needs scipy >= 1.8 (scipy.stats.qmc).") from err
-    if method == "lhs-optimized":
-        engine = _qmc_engine(qmc.LatinHypercube, d, rng, optimization="random-cd")
-    elif method == "lhs-centered":
-        engine = _qmc_engine(qmc.LatinHypercube, d, rng, scramble=False)
-    elif method == "sobol":
-        engine = _qmc_engine(qmc.Sobol, d, rng, scramble=True)
-    elif method == "halton":
-        engine = _qmc_engine(qmc.Halton, d, rng, scramble=True)
-    else:
-        raise SystemExit(f"Unknown sampling method '{method}'.")
-    import warnings
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")  # Sobol warns when n is not a power of 2
-        return np.asarray(engine.random(n), dtype=float)
-
-
-def scale(u: np.ndarray, sliders: Sequence[Slider]) -> np.ndarray:
-    if not sliders:
-        return np.zeros((u.shape[0], 0))
-    lo = np.array([s.lo for s in sliders])
-    hi = np.array([s.hi for s in sliders])
-    return lo + u * (hi - lo)
-
-
-def load_samples_csv(path: str, sliders: Sequence[Slider]) -> np.ndarray:
-    """Read an explicit design of experiments; columns must be named after the parameter sliders."""
-    with open(path, newline="", encoding="utf-8-sig") as fh:
-        rows = list(csv.DictReader(fh))
-    missing = [s.name for s in sliders if rows and s.name not in rows[0]]
-    if missing:
-        raise ValueError(f"{path} is missing columns for parameters: {missing}")
-    return np.array([[float(r[s.name]) for s in sliders] for r in rows], dtype=float).reshape(len(rows), len(sliders))
 
 
 # ============================================================================ optimizers
@@ -627,23 +507,14 @@ def parse_args(argv=None) -> argparse.Namespace:
                     help="output CSV file or folder. Overrides the component's Output Path input; if neither is set, "
                          f"{DEFAULT_CSV_NAME} is written to the current folder")
     ap.add_argument("--append", action="store_true", help="append to an existing CSV instead of overwriting")
-    ap.add_argument("--samples", type=int, default=50, help="number of optimization runs")
-    ap.add_argument("--sampling", default=None, metavar="METHOD",
-                    help="how the Sample Parameters (and sampled start points) are drawn: "
-                         + ", ".join(SAMPLING_METHODS) + ". Overrides the component's Sampling Method input; "
-                         "default lhs")
-    ap.add_argument("--grid-levels", default=None,
-                    help="for --sampling grid: levels per dimension, one value or a comma list "
-                         "(default: the largest grid with at most --samples points, min 2 levels)")
-    ap.add_argument("--list-sampling", action="store_true", help="list the sampling methods and exit")
-    ap.add_argument("--samples-csv", default=None,
-                    help="optional CSV of explicit parameter samples (columns named after the parameter sliders); "
-                         "overrides --samples/--sampling for the parameters")
-    ap.add_argument("--start", choices=["auto", "sampled", "lhs", "random", "center", "current"], default="auto",
-                    help="starting point of each run: 'sampled' = drawn with the sampling method together with the "
-                         "parameters ('lhs' is an alias); 'auto' = 'current' slider values when there are sample "
-                         "parameters, otherwise 'sampled' (multi-start)")
-    ap.add_argument("--seed", type=int, default=0, help="random seed")
+    ap.add_argument("--plan", default=None, metavar="FILE",
+                    help="run this sampling plan CSV (from sampling_plan.py, edited, or hand-made). Without it, a "
+                         "plan is generated from the sampling-plan options below and saved as <out>.plan.csv")
+    ap.add_argument("--samples-csv", dest="plan", help=argparse.SUPPRESS)  # older name for --plan
+    ap.add_argument("--resume", action="store_true",
+                    help="continue an interrupted study: skip plan runs already in the output CSV and append the "
+                         "rest. Uses --plan, or else the <out>.plan.csv saved by the interrupted study")
+    add_plan_arguments(ap, "sampling plan (used only when no --plan is given)")
     ap.add_argument("--algorithm", default="COBYLA",
                     help="scipy method (COBYLA, COBYQA, SLSQP, trust-constr) or nlopt:<ALGO> (e.g. nlopt:LN_COBYLA)")
     ap.add_argument("--maxiter", type=int, default=500, help="max iterations / evaluations per run")
@@ -667,8 +538,7 @@ def parse_args(argv=None) -> argparse.Namespace:
 def main(argv=None) -> int:
     args = parse_args(argv)
     if args.list_sampling:
-        for name, text in SAMPLING_METHODS.items():
-            print(f"{name:14s} {text}")
+        print_sampling_methods()
         return 0
     log = (lambda *a: None) if args.quiet else (lambda *a: print(*a, flush=True))
     cli_sampling = normalize_sampling(args.sampling)  # fail fast on a bad name
@@ -697,67 +567,47 @@ def main(argv=None) -> int:
         log(f"  output    : {out_path} (from {out_source})")
         out_dir = os.path.dirname(out_path)
         os.makedirs(out_dir, exist_ok=True)
+        out_stem = os.path.splitext(out_path)[0]
         header = csv_header(problem)
-        append = args.append and os.path.exists(out_path) and os.path.getsize(out_path) > 0
+        exists = os.path.exists(out_path) and os.path.getsize(out_path) > 0
+        append = (args.append or args.resume) and exists
+        existing_runs: set = set()
         run_offset = 0
         if append:
             with open(out_path, newline="", encoding="utf-8") as fh:
                 existing = list(csv.reader(fh))
             if existing[0] != header:
                 raise ValueError(f"Cannot append: {out_path} has different columns than the current definition.")
-            run_offset = len(existing) - 1
+            existing_runs = {int(r[0]) for r in existing[1:] if r and r[0].strip().lstrip("-").isdigit()}
+            run_offset = (max(existing_runs) + 1) if existing_runs else 0
 
-        # different seed stream per appended batch so samples are not repeated
-        rng = np.random.default_rng([args.seed, run_offset])
-
-        # ---- design of experiments
+        # ---- sampling plan (step 1): read it, or generate and save it
+        plan_file = args.plan
+        if args.resume and not plan_file:
+            plan_file = out_stem + ".plan.csv"
+            if not os.path.exists(plan_file):
+                raise SystemExit(f"--resume needs the study's plan: pass --plan, or keep {plan_file} next to the results.")
+        if plan_file:
+            plan: Plan = read_plan(plan_file, problem.variables, problem.parameters)
+            plan_path = os.path.abspath(plan_file)
+        else:
+            sampling, sampling_source = resolve_sampling(cli_sampling, info.get("sampling_method"))
+            log(f"  sampling  : {sampling} (from {sampling_source})")
+            # appended batches get their own seed stream and run numbers, so samples are not repeated
+            plan = make_plan(problem.variables, problem.parameters, args.samples, sampling, args.start, args.seed,
+                             args.grid_levels, seed_offset=run_offset, run_offset=run_offset)
+            plan_path = out_stem + (f".plan.{run_offset}.csv" if append else ".plan.csv")
+            write_plan(plan, plan_path, info.get("document", ""))
+        log_plan(plan, log)
+        if not plan_file:
+            log(f"  plan saved: {plan_path}")
+        todo = [k for k, run in enumerate(plan.runs) if not (args.resume and run in existing_runs)]
+        if args.resume:
+            log(f"  resume    : {len(plan) - len(todo)} run(s) already done, {len(todo)} to go")
+        elif append and plan_file and set(plan.runs) & existing_runs:
+            log("  WARNING: some plan run numbers already exist in the output CSV (use --resume to skip them).")
+        n_runs = len(todo)
         n_par = len(problem.parameters)
-        if args.samples_csv:
-            P = load_samples_csv(args.samples_csv, problem.parameters)
-            n_runs = P.shape[0]
-        else:
-            n_runs = args.samples
-            P = None
-        start = "sampled" if args.start == "lhs" else args.start
-        if start == "auto":
-            start = "current" if n_par > 0 else "sampled"
-
-        if cli_sampling:
-            sampling, sampling_source = cli_sampling, "--sampling"
-        elif info.get("sampling_method"):
-            sampling, sampling_source = normalize_sampling(info["sampling_method"]), "component Sampling Method"
-        else:
-            sampling, sampling_source = "lhs", "default"
-
-        # draw parameters and sampled starts jointly so the combined design is space-filling
-        d_joint = (n_par if P is None else 0) + (problem.n if start == "sampled" else 0)
-        levels = None
-        if sampling == "grid":
-            if P is not None:
-                raise SystemExit("Grid sampling cannot be combined with --samples-csv (the CSV already fixes the samples).")
-            if d_joint == 0:
-                raise SystemExit("Grid sampling needs Sample Parameters or --start sampled.")
-            levels = grid_levels(args.grid_levels, n_runs, d_joint)
-            n_runs = int(np.prod(levels))
-        if d_joint or start == "sampled":
-            log(f"  sampling  : {sampling} (from {sampling_source}), {n_runs} run(s)"
-                + (f", grid levels {levels}" if levels else ""))
-        if sampling == "sobol" and n_runs & (n_runs - 1):
-            log(f"  note      : Sobol sequences are most uniform when the sample count is a power of 2 "
-                f"(e.g. {1 << max(0, n_runs.bit_length() - 1)} or {1 << n_runs.bit_length()}).")
-        U = sample_unit(sampling, n_runs, d_joint, rng, levels)
-        col = 0
-        if P is None:
-            P = scale(U[:, :n_par], problem.parameters)
-            col = n_par
-        if start == "sampled":
-            U0 = U[:, col:col + problem.n]
-        elif start == "random":
-            U0 = rng.random((n_runs, problem.n))
-        elif start == "center":
-            U0 = np.full((n_runs, problem.n), 0.5)
-        else:
-            U0 = np.tile(problem.to_u(original_x), (n_runs, 1))
 
         meta = {
             "document": info.get("document", ""),
@@ -770,9 +620,7 @@ def main(argv=None) -> int:
             "limits": problem.limits.tolist(),
             "types": problem.types,
             "settings": {k: v for k, v in vars(args).items()},
-            "start_mode": start,
-            "sampling": sampling,
-            "grid_levels": levels,
+            "plan": {"path": plan_path, **plan.describe()},
         }
         meta_path = os.path.splitext(out_path)[0] + (f".meta.{run_offset}.json" if append else ".meta.json")
         with open(meta_path, "w", encoding="utf-8") as fh:
@@ -786,11 +634,11 @@ def main(argv=None) -> int:
                 if not append:
                     writer.writerow(header)
                     fh.flush()
-                for k in range(n_runs):
-                    run_id = run_offset + k
-                    p = P[k] if n_par else np.zeros(0)
-                    u0 = U0[k]
-                    x0 = problem.to_x(u0)
+                for i, k in enumerate(todo):
+                    run_id = plan.runs[k]
+                    p = plan.P[k] if n_par else np.zeros(0)
+                    x0 = plan.X0[k]  # already inside the slider bounds
+                    u0 = problem.to_u(x0)
                     problem.reset_run(p if n_par else None)
                     t0 = time.perf_counter()
                     res: Optional[RunResult] = None
@@ -813,7 +661,7 @@ def main(argv=None) -> int:
                     writer.writerow(csv_row(run_id, problem, p_rep, x0, ev, res, feasible, elapsed, msg_override))
                     fh.flush()
                     obj_txt = f"{ev.objective:.6g}" if ev is not None and math.isfinite(ev.objective) else "nan"
-                    log(f"[{k + 1}/{n_runs}] obj={obj_txt} feasible={feasible} "
+                    log(f"[{i + 1}/{n_runs}] run {run_id}: obj={obj_txt} feasible={feasible} "
                         f"success={res.success if res else False} status={res.status if res else -100} "
                         f"evals={problem.n_evals} time={elapsed:.2f}s"
                         + (f"  {msg_override}" if msg_override else ""))

@@ -128,9 +128,10 @@ namespace BeamShapeExplorer.Optimization
                 if (i != InObjectives) pManager[i].Optional = true;
             pManager[InVariables].Optional = true;
             pManager.AddTextParameter("Sampling Method", "SM",
-                "(Optional) How the Python driver samples the Sample Parameters between runs: " +
+                "(Optional) How the sampling plan (python/sampling_plan.py, or the driver when it makes the plan itself) " +
+                "samples the Sample Parameters: " +
                 "lhs (Latin Hypercube, default), lhs-optimized, lhs-centered, sobol, halton, random, or grid " +
-                "(full factorial). The driver's --sampling option overrides this.",
+                "(full factorial). The --sampling option overrides this. Not used when the driver runs an existing plan (--plan).",
                 GH_ParamAccess.item);
 
             pManager[InOutput].Optional = true;
