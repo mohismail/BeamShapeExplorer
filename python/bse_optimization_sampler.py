@@ -1,0 +1,698 @@
+#!/usr/bin/env python3
+"""
+BSE Optimization Sampler - Python driver
+========================================
+
+Samples many constrained optimization runs of a Grasshopper definition, following the
+data-collection method of the Beam Shape Explorer (BSE) surrogate-modelling workflow:
+
+    1. Draw N samples of the *design inputs* (the "Sample Parameters" sliders) with
+       Latin Hypercube Sampling (LHS) inside the slider Min/Max limits.
+    2. For every sample, hold the design inputs fixed and run a constrained optimization
+       (COBYLA by default) over the *design variables* (the "Variables" sliders), whose
+       bounds are the slider Min/Max limits.
+    3. Save one CSV row per run with the sample inputs, start point, final variables,
+       final objective(s), constraint values, success/status code and run time.
+
+The Grasshopper side is the "Optimization Sampler" component (Beam Shape Explorer >
+Optimization). Set its Listen input to True, then run, for example:
+
+    python bse_optimization_sampler.py --samples 100 --out runs.csv
+
+Communication is newline-delimited JSON over a localhost TCP socket (see README.md).
+Requires numpy and scipy; nlopt is optional (``--algorithm nlopt:LN_COBYLA``).
+"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import json
+import math
+import os
+import socket
+import sys
+import time
+from dataclasses import dataclass, field
+from typing import Callable, Dict, List, Optional, Sequence, Tuple
+
+import numpy as np
+
+try:
+    import scipy
+    from scipy.optimize import minimize
+except ImportError:  # pragma: no cover - reported at runtime
+    scipy = None
+    minimize = None
+
+
+# ============================================================================ client
+
+
+class GrasshopperError(RuntimeError):
+    """Raised when the Grasshopper component reports an error."""
+
+
+class GrasshopperClient:
+    """Thin client for the Optimization Sampler component's JSON-lines protocol."""
+
+    def __init__(self, host: str = "127.0.0.1", port: int = 8765, timeout: float = 600.0,
+                 connect_retries: int = 10):
+        self.host, self.port, self.timeout = host, port, timeout
+        last_err: Optional[Exception] = None
+        for attempt in range(max(1, connect_retries)):
+            try:
+                self.sock = socket.create_connection((host, port), timeout=timeout)
+                break
+            except OSError as err:
+                last_err = err
+                time.sleep(min(2.0, 0.25 * (attempt + 1)))
+        else:
+            raise ConnectionError(
+                f"Could not connect to Grasshopper at {host}:{port} ({last_err}). "
+                "Is the Optimization Sampler component's Listen input set to True?")
+        self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        self._file = self.sock.makefile("rwb")
+
+    def request(self, payload: dict) -> dict:
+        payload = dict(payload)
+        payload.setdefault("timeout", self.timeout)
+        self._file.write((json.dumps(payload, allow_nan=False) + "\n").encode("utf-8"))
+        self._file.flush()
+        line = self._file.readline()
+        if not line:
+            raise ConnectionError("Grasshopper closed the connection.")
+        response = json.loads(line.decode("utf-8"))
+        if not response.get("ok", False):
+            raise GrasshopperError(response.get("error", "unknown error"))
+        return response
+
+    def ping(self) -> dict:
+        return self.request({"cmd": "ping"})
+
+    def info(self) -> dict:
+        return self.request({"cmd": "info"})
+
+    def evaluate(self, variables: Optional[Sequence[float]] = None,
+                 parameters: Optional[Sequence[float]] = None, count: bool = True) -> dict:
+        payload: dict = {"cmd": "evaluate" if count else "set"}
+        if variables is not None:
+            payload["variables"] = [float(v) for v in variables]
+        if parameters is not None:
+            payload["parameters"] = [float(v) for v in parameters]
+        return self.request(payload)
+
+    def close(self) -> None:
+        try:
+            self.request({"cmd": "close"})
+        except Exception:
+            pass
+        try:
+            self._file.close()
+            self.sock.close()
+        except Exception:
+            pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+
+
+# ============================================================================ problem
+
+
+def _floats(values, n: Optional[int] = None) -> np.ndarray:
+    """Convert a JSON list (None -> NaN) to a float array, optionally padded/truncated to n."""
+    arr = np.array([np.nan if v is None else float(v) for v in (values or [])], dtype=float)
+    if n is not None and arr.size != n:
+        out = np.full(n, np.nan)
+        out[: min(n, arr.size)] = arr[: min(n, arr.size)]
+        arr = out
+    return arr
+
+
+@dataclass
+class Slider:
+    name: str
+    lo: float
+    hi: float
+    value: float
+    decimals: int = 3
+    integer: bool = False
+
+    @classmethod
+    def from_info(cls, d: dict) -> "Slider":
+        lo, hi = float(d["min"]), float(d["max"])
+        if hi < lo:
+            lo, hi = hi, lo
+        return cls(d["name"], lo, hi, float(d["value"]), int(d.get("decimals", 3)), bool(d.get("integer", False)))
+
+
+@dataclass
+class Evaluation:
+    x: np.ndarray                 # variable values actually applied (after slider rounding)
+    p: np.ndarray                 # parameter values actually applied
+    objectives: np.ndarray
+    objective: float              # weighted sum
+    constraints: np.ndarray
+    violations: np.ndarray
+    gh_errors: List[str] = field(default_factory=list)
+    solve_time: float = 0.0
+
+    @property
+    def max_violation(self) -> float:
+        if self.violations.size == 0:
+            return 0.0
+        v = np.where(np.isnan(self.violations), np.inf, self.violations)
+        return float(np.max(v))
+
+
+class GrasshopperProblem:
+    """Wraps the Grasshopper definition as an optimization problem in normalized [0, 1] space."""
+
+    def __init__(self, client: GrasshopperClient, info: dict, nan_penalty: float = 1e12,
+                 fail_on_gh_error: bool = False):
+        self.client = client
+        self.variables = [Slider.from_info(d) for d in info["variables"]]
+        self.parameters = [Slider.from_info(d) for d in info.get("parameters", [])]
+        self.objective_names: List[str] = list(info.get("objective_names", []))
+        self.constraint_names: List[str] = list(info.get("constraint_names", []))
+        self.limits = _floats(info.get("limits", []), len(self.constraint_names))
+        self.types: List[str] = list(info.get("types", [])) or ["<="] * len(self.constraint_names)
+        self.weights = _floats(info.get("weights", []), len(self.objective_names))
+        self.nan_penalty = nan_penalty
+        self.fail_on_gh_error = fail_on_gh_error
+
+        if not self.variables:
+            raise ValueError("The Optimization Sampler component reports no variable sliders.")
+        if not self.objective_names:
+            raise ValueError("The Optimization Sampler component reports no objective values.")
+
+        self.lb = np.array([s.lo for s in self.variables])
+        self.ub = np.array([s.hi for s in self.variables])
+        self.span = np.where(self.ub > self.lb, self.ub - self.lb, 1.0)
+        self.current_p: Optional[np.ndarray] = None
+        self._cache: Dict[Tuple, Evaluation] = {}
+        self.n_evals = 0
+        self.solve_time = 0.0
+        self.history: List[Evaluation] = []
+
+    # -- dimensions
+    @property
+    def n(self) -> int:
+        return len(self.variables)
+
+    @property
+    def m(self) -> int:
+        return len(self.constraint_names)
+
+    # -- scaling
+    def to_x(self, u: np.ndarray) -> np.ndarray:
+        return self.lb + np.clip(np.asarray(u, dtype=float), 0.0, 1.0) * self.span
+
+    def to_u(self, x: np.ndarray) -> np.ndarray:
+        return np.clip((np.asarray(x, dtype=float) - self.lb) / self.span, 0.0, 1.0)
+
+    # -- evaluation
+    def reset_run(self, p: Optional[np.ndarray]) -> None:
+        self.current_p = None if p is None else np.asarray(p, dtype=float)
+        self._cache.clear()
+        self.n_evals = 0
+        self.solve_time = 0.0
+        self.history = []
+        self._params_pending = self.current_p is not None and len(self.parameters) > 0
+
+    def evaluate_x(self, x: np.ndarray) -> Evaluation:
+        x = np.clip(np.asarray(x, dtype=float), self.lb, self.ub)
+        key = tuple(np.round(x, 12))
+        hit = self._cache.get(key)
+        if hit is not None:
+            return hit
+        params = None
+        if self._params_pending:
+            params = self.current_p.tolist()
+            self._params_pending = False
+        r = self.client.evaluate(x.tolist(), params)
+        ev = self._parse(r)
+        self.n_evals += 1
+        self.solve_time += ev.solve_time
+        self._cache[key] = ev
+        self.history.append(ev)
+        return ev
+
+    def _parse(self, r: dict) -> Evaluation:
+        objectives = _floats(r.get("objectives"), len(self.objective_names))
+        weights = _floats(r.get("weights"), len(self.objective_names))
+        weights = np.where(np.isnan(weights), self.weights, weights)
+        weights = np.where(np.isnan(weights), 1.0, weights)
+        constraints = _floats(r.get("constraints"), self.m)
+        violations = self.violation(constraints)
+        objective = float(np.sum(weights * objectives)) if objectives.size else float("nan")
+        return Evaluation(
+            x=_floats(r.get("variables"), self.n),
+            p=_floats(r.get("parameters"), len(self.parameters)),
+            objectives=objectives,
+            objective=objective,
+            constraints=constraints,
+            violations=violations,
+            gh_errors=list(r.get("gh_errors") or []),
+            solve_time=float(r.get("solve_time") or 0.0),
+        )
+
+    def violation(self, c: np.ndarray) -> np.ndarray:
+        out = np.empty(self.m)
+        for i in range(self.m):
+            v, lim, t = c[i], self.limits[i], self.types[i]
+            if np.isnan(v):
+                out[i] = np.inf
+            elif t == ">=":
+                out[i] = max(0.0, lim - v)
+            elif t == "=":
+                out[i] = abs(v - lim)
+            else:
+                out[i] = max(0.0, v - lim)
+        return out
+
+    def _failed(self, ev: Evaluation) -> bool:
+        return (not math.isfinite(ev.objective)) or (self.fail_on_gh_error and bool(ev.gh_errors))
+
+    # -- functions in normalized space for the optimizers
+    def f(self, u: np.ndarray) -> float:
+        ev = self.evaluate_x(self.to_x(u))
+        return self.nan_penalty if self._failed(ev) else ev.objective
+
+    def g_signed(self, u: np.ndarray) -> np.ndarray:
+        """Constraint margins in 'value >= 0 is feasible' form, one per constraint (equalities give v - limit)."""
+        ev = self.evaluate_x(self.to_x(u))
+        g = np.empty(self.m)
+        for i in range(self.m):
+            v, lim, t = ev.constraints[i], self.limits[i], self.types[i]
+            if np.isnan(v) or self._failed(ev):
+                g[i] = self.nan_penalty if t == "=" else -self.nan_penalty
+            elif t == "<=":
+                g[i] = lim - v
+            else:  # ">=" (margin) and "=" (residual)
+                g[i] = v - lim
+        return g
+
+    def ineq_index(self) -> np.ndarray:
+        return np.array([i for i, t in enumerate(self.types) if t != "="], dtype=int)
+
+    def eq_index(self) -> np.ndarray:
+        return np.array([i for i, t in enumerate(self.types) if t == "="], dtype=int)
+
+
+# ============================================================================ sampling
+
+
+def latin_hypercube(n: int, d: int, rng: np.random.Generator) -> np.ndarray:
+    """Random Latin Hypercube sample in [0, 1)^d with n points (one point per stratum per dimension)."""
+    if d == 0:
+        return np.zeros((n, 0))
+    u = (rng.random((n, d)) + np.arange(n)[:, None]) / n
+    for j in range(d):
+        u[:, j] = u[rng.permutation(n), j]
+    return u
+
+
+def scale(u: np.ndarray, sliders: Sequence[Slider]) -> np.ndarray:
+    if not sliders:
+        return np.zeros((u.shape[0], 0))
+    lo = np.array([s.lo for s in sliders])
+    hi = np.array([s.hi for s in sliders])
+    return lo + u * (hi - lo)
+
+
+def load_samples_csv(path: str, sliders: Sequence[Slider]) -> np.ndarray:
+    """Read an explicit design of experiments; columns must be named after the parameter sliders."""
+    with open(path, newline="", encoding="utf-8-sig") as fh:
+        rows = list(csv.DictReader(fh))
+    missing = [s.name for s in sliders if rows and s.name not in rows[0]]
+    if missing:
+        raise ValueError(f"{path} is missing columns for parameters: {missing}")
+    return np.array([[float(r[s.name]) for s in sliders] for r in rows], dtype=float).reshape(len(rows), len(sliders))
+
+
+# ============================================================================ optimizers
+
+
+@dataclass
+class RunResult:
+    u: np.ndarray
+    success: bool
+    status: int
+    message: str
+    nit: Optional[int] = None
+
+
+def run_scipy(problem: GrasshopperProblem, u0: np.ndarray, method: str, args) -> RunResult:
+    if minimize is None:
+        raise RuntimeError("scipy is required for scipy algorithms: pip install scipy")
+    n = problem.n
+    bounds = [(0.0, 1.0)] * n
+    ineq, eq = problem.ineq_index(), problem.eq_index()
+    cons: List[dict] = []
+    method_u = method.upper()
+
+    if method_u in ("COBYLA", "COBYQA"):
+        # inequality form only for COBYLA; equalities as two-sided band of width eq_tol
+        if ineq.size:
+            cons.append({"type": "ineq", "fun": lambda u: problem.g_signed(u)[ineq]})
+        if eq.size:
+            if method_u == "COBYQA":
+                cons.append({"type": "eq", "fun": lambda u: problem.g_signed(u)[eq]})
+            else:
+                cons.append({"type": "ineq", "fun": lambda u: args.eq_tol - problem.g_signed(u)[eq]})
+                cons.append({"type": "ineq", "fun": lambda u: args.eq_tol + problem.g_signed(u)[eq]})
+        if method_u == "COBYLA" and _scipy_older_than(1, 11):
+            # old scipy COBYLA ignores bounds -> add them as constraints
+            cons.append({"type": "ineq", "fun": lambda u: np.asarray(u)})
+            cons.append({"type": "ineq", "fun": lambda u: 1.0 - np.asarray(u)})
+    else:
+        if ineq.size:
+            cons.append({"type": "ineq", "fun": lambda u: problem.g_signed(u)[ineq]})
+        if eq.size:
+            cons.append({"type": "eq", "fun": lambda u: problem.g_signed(u)[eq]})
+
+    options: dict = {"maxiter": args.maxiter}
+    if method_u == "COBYLA":
+        options.update({"rhobeg": args.rhobeg, "catol": args.feas_tol})
+    elif method_u == "COBYQA":
+        options.update({"initial_tr_radius": args.rhobeg, "feasibility_tol": args.feas_tol})
+    elif method_u == "SLSQP":
+        options.update({"eps": args.fd_step})
+    elif method_u == "TRUST-CONSTR":
+        options.update({"finite_diff_rel_step": args.fd_step})
+
+    res = minimize(problem.f, np.asarray(u0, dtype=float), method=method, bounds=bounds,
+                   constraints=cons, tol=args.tol, options=options)
+    status = int(res.status) if getattr(res, "status", None) is not None else (0 if res.success else -1)
+    return RunResult(np.clip(np.asarray(res.x, dtype=float), 0.0, 1.0), bool(res.success), status,
+                     str(res.message), getattr(res, "nit", None))
+
+
+def run_nlopt(problem: GrasshopperProblem, u0: np.ndarray, algorithm: str, args) -> RunResult:
+    try:
+        import nlopt  # type: ignore
+    except ImportError as err:
+        raise RuntimeError("nlopt is not installed: pip install nlopt") from err
+    algo = getattr(nlopt, algorithm.upper())
+    n = problem.n
+    opt = nlopt.opt(algo, n)
+    opt.set_lower_bounds([0.0] * n)
+    opt.set_upper_bounds([1.0] * n)
+    opt.set_min_objective(lambda u, grad: float(problem.f(u)))
+    ineq, eq = problem.ineq_index(), problem.eq_index()
+    # nlopt uses c(u) <= 0 for feasibility
+    if ineq.size:
+        def c_ineq(result, u, grad):
+            result[:] = -problem.g_signed(u)[ineq]
+        opt.add_inequality_mconstraint(c_ineq, [args.feas_tol] * int(ineq.size))
+    if eq.size:
+        def c_eq(result, u, grad):
+            result[:] = problem.g_signed(u)[eq]
+        opt.add_equality_mconstraint(c_eq, [args.eq_tol] * int(eq.size))
+    opt.set_maxeval(args.maxiter)
+    opt.set_xtol_rel(args.tol)
+    opt.set_ftol_rel(args.tol)
+    try:
+        opt.set_initial_step(args.rhobeg)
+    except Exception:
+        pass
+    try:
+        u = np.asarray(opt.optimize(np.asarray(u0, dtype=float)), dtype=float)
+        code = int(opt.last_optimize_result())
+        message = _NLOPT_CODES.get(code, str(code))
+    except nlopt.RoundoffLimited:
+        u, code, message = problem.to_u(problem.history[-1].x) if problem.history else u0, -4, "ROUNDOFF_LIMITED"
+    success = code > 0 and code != 5 and code != 6  # MAXEVAL_REACHED / MAXTIME_REACHED are not convergence
+    return RunResult(np.clip(u, 0.0, 1.0), success, code, message)
+
+
+_NLOPT_CODES = {1: "SUCCESS", 2: "STOPVAL_REACHED", 3: "FTOL_REACHED", 4: "XTOL_REACHED",
+                5: "MAXEVAL_REACHED", 6: "MAXTIME_REACHED", -1: "FAILURE", -2: "INVALID_ARGS",
+                -3: "OUT_OF_MEMORY", -4: "ROUNDOFF_LIMITED", -5: "FORCED_STOP"}
+
+
+def _scipy_older_than(major: int, minor: int) -> bool:
+    try:
+        parts = [int(p) for p in scipy.__version__.split(".")[:2]]
+        return tuple(parts) < (major, minor)
+    except Exception:
+        return False
+
+
+SCIPY_METHODS = ("COBYLA", "COBYQA", "SLSQP", "TRUST-CONSTR")
+
+
+def make_optimizer(name: str) -> Callable[[GrasshopperProblem, np.ndarray, argparse.Namespace], RunResult]:
+    if name.lower().startswith("nlopt:"):
+        algo = name.split(":", 1)[1]
+        try:
+            import nlopt  # type: ignore
+        except ImportError as err:
+            raise SystemExit("nlopt is not installed: pip install nlopt") from err
+        if not hasattr(nlopt, algo.upper()):
+            raise SystemExit(f"Unknown nlopt algorithm '{algo}' (e.g. LN_COBYLA, LN_BOBYQA, GN_ISRES).")
+        return lambda pr, u0, a: run_nlopt(pr, u0, algo, a)
+    if name.upper() not in SCIPY_METHODS:
+        raise SystemExit(f"Unsupported algorithm '{name}'. Use one of {SCIPY_METHODS} or nlopt:<ALGO>.")
+    if minimize is None:
+        raise SystemExit("scipy is required: pip install scipy")
+    return lambda pr, u0, a: run_scipy(pr, u0, name, a)
+
+
+# ============================================================================ CSV
+
+
+def csv_header(problem: GrasshopperProblem) -> List[str]:
+    cols = ["run"]
+    cols += [f"param:{s.name}" for s in problem.parameters]
+    cols += [f"x0:{s.name}" for s in problem.variables]
+    cols += [f"x:{s.name}" for s in problem.variables]
+    cols += ["objective"]
+    cols += [f"obj:{n}" for n in problem.objective_names]
+    cols += [f"con:{n}" for n in problem.constraint_names]
+    cols += ["max_violation", "feasible", "success", "status", "message",
+             "n_evals", "nit", "gh_solve_time_s", "time_s", "gh_errors"]
+    return cols
+
+
+def csv_row(run: int, problem: GrasshopperProblem, p: np.ndarray, x0: np.ndarray,
+            ev: Optional[Evaluation], res: Optional[RunResult], feasible: bool,
+            elapsed: float, message_override: Optional[str] = None) -> List:
+    def fmt(v):
+        if v is None:
+            return ""
+        if isinstance(v, (float, np.floating)):
+            return "" if not np.isfinite(v) else repr(float(v))
+        return v
+
+    nan_n = [float("nan")] * problem.n
+    row: List = [run]
+    row += [fmt(v) for v in (p if p is not None and len(p) else [])]
+    row += [fmt(v) for v in x0]
+    row += [fmt(v) for v in (ev.x if ev is not None else nan_n)]
+    row += [fmt(ev.objective if ev is not None else float("nan"))]
+    row += [fmt(v) for v in (ev.objectives if ev is not None else [float("nan")] * len(problem.objective_names))]
+    row += [fmt(v) for v in (ev.constraints if ev is not None else [float("nan")] * problem.m)]
+    max_v = ev.max_violation if ev is not None else float("inf")
+    row += [fmt(max_v) if np.isfinite(max_v) else "inf",
+            int(bool(feasible)),
+            int(bool(res.success)) if res is not None else 0,
+            res.status if res is not None else -100,
+            message_override if message_override is not None else (res.message if res is not None else ""),
+            problem.n_evals,
+            res.nit if res is not None and res.nit is not None else "",
+            fmt(problem.solve_time),
+            fmt(elapsed),
+            " | ".join(ev.gh_errors) if ev is not None else ""]
+    return row
+
+
+# ============================================================================ main
+
+
+def parse_args(argv=None) -> argparse.Namespace:
+    ap = argparse.ArgumentParser(
+        description="Sample many constrained optimization runs of a Grasshopper definition "
+                    "through the BSE Optimization Sampler component and save the results to CSV.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    ap.add_argument("--host", default="127.0.0.1")
+    ap.add_argument("--port", type=int, default=8765, help="must match the component's Port input")
+    ap.add_argument("--out", default="optimization_samples.csv", help="output CSV path")
+    ap.add_argument("--append", action="store_true", help="append to an existing CSV instead of overwriting")
+    ap.add_argument("--samples", type=int, default=50, help="number of optimization runs")
+    ap.add_argument("--sampling", choices=["lhs", "random"], default="lhs",
+                    help="how the Sample Parameters (and LHS start points) are drawn")
+    ap.add_argument("--samples-csv", default=None,
+                    help="optional CSV of explicit parameter samples (columns named after the parameter sliders); "
+                         "overrides --samples/--sampling for the parameters")
+    ap.add_argument("--start", choices=["auto", "lhs", "random", "center", "current"], default="auto",
+                    help="starting point of each run; 'auto' = 'current' slider values when there are sample "
+                         "parameters, otherwise 'lhs' (multi-start)")
+    ap.add_argument("--seed", type=int, default=0, help="random seed")
+    ap.add_argument("--algorithm", default="COBYLA",
+                    help="scipy method (COBYLA, COBYQA, SLSQP, trust-constr) or nlopt:<ALGO> (e.g. nlopt:LN_COBYLA)")
+    ap.add_argument("--maxiter", type=int, default=500, help="max iterations / evaluations per run")
+    ap.add_argument("--tol", type=float, default=1e-4, help="optimizer convergence tolerance")
+    ap.add_argument("--rhobeg", type=float, default=0.1,
+                    help="initial step for COBYLA/COBYQA/nlopt, as a fraction of each variable's slider range")
+    ap.add_argument("--fd-step", type=float, default=1e-3,
+                    help="finite-difference step for gradient methods (normalized units); keep larger than slider rounding")
+    ap.add_argument("--feas-tol", type=float, default=1e-4, help="absolute constraint violation tolerated as feasible")
+    ap.add_argument("--eq-tol", type=float, default=1e-3, help="tolerance band for '=' constraints")
+    ap.add_argument("--nan-penalty", type=float, default=1e12,
+                    help="objective used when the definition returns no/invalid objective")
+    ap.add_argument("--fail-on-gh-error", action="store_true",
+                    help="treat evaluations where any Grasshopper component has an error as failed")
+    ap.add_argument("--timeout", type=float, default=600.0, help="seconds to wait for one Grasshopper solution")
+    ap.add_argument("--no-restore", action="store_true", help="do not restore the original slider values at the end")
+    ap.add_argument("--quiet", action="store_true")
+    return ap.parse_args(argv)
+
+
+def main(argv=None) -> int:
+    args = parse_args(argv)
+    log = (lambda *a: None) if args.quiet else (lambda *a: print(*a, flush=True))
+    optimizer = make_optimizer(args.algorithm)  # fail fast on a bad algorithm name
+
+    with GrasshopperClient(args.host, args.port, timeout=args.timeout) as client:
+        info = client.info()
+        problem = GrasshopperProblem(client, info, args.nan_penalty, args.fail_on_gh_error)
+        original_x = np.array([s.value for s in problem.variables])
+        original_p = np.array([s.value for s in problem.parameters])
+
+        log(f"Connected to '{info.get('document', '')}' on {args.host}:{args.port}")
+        log("  variables : " + ", ".join(f"{s.name}[{s.lo:g}, {s.hi:g}]" for s in problem.variables))
+        log("  parameters: " + (", ".join(f"{s.name}[{s.lo:g}, {s.hi:g}]" for s in problem.parameters) or "(none)"))
+        log(f"  objectives: {problem.objective_names} weights={problem.weights.tolist()}")
+        log(f"  {problem.m} constraint(s)")
+        for s in problem.variables + problem.parameters:
+            resolution = 10.0 ** (-s.decimals) / max(s.hi - s.lo, 1e-300)
+            if not s.integer and resolution > 1e-4:
+                log(f"  WARNING: slider '{s.name}' rounds to {s.decimals} decimal place(s) "
+                    f"({resolution:.1e} of its range). Rounding makes the objective stepped and can stop "
+                    "optimizers early; increase the slider's decimal places (5+ recommended).")
+
+        # ---- output files
+        out_dir = os.path.dirname(os.path.abspath(args.out))
+        os.makedirs(out_dir, exist_ok=True)
+        header = csv_header(problem)
+        append = args.append and os.path.exists(args.out) and os.path.getsize(args.out) > 0
+        run_offset = 0
+        if append:
+            with open(args.out, newline="", encoding="utf-8") as fh:
+                existing = list(csv.reader(fh))
+            if existing[0] != header:
+                raise ValueError(f"Cannot append: {args.out} has different columns than the current definition.")
+            run_offset = len(existing) - 1
+
+        # different seed stream per appended batch so samples are not repeated
+        rng = np.random.default_rng([args.seed, run_offset])
+
+        # ---- design of experiments
+        n_par = len(problem.parameters)
+        if args.samples_csv:
+            P = load_samples_csv(args.samples_csv, problem.parameters)
+            n_runs = P.shape[0]
+        else:
+            n_runs = args.samples
+            P = None
+        start = args.start
+        if start == "auto":
+            start = "current" if n_par > 0 else "lhs"
+
+        # draw parameters and LHS starts jointly so the combined design is space-filling
+        d_joint = (n_par if P is None else 0) + (problem.n if start == "lhs" else 0)
+        if args.sampling == "lhs":
+            U = latin_hypercube(n_runs, d_joint, rng)
+        else:
+            U = rng.random((n_runs, d_joint))
+        col = 0
+        if P is None:
+            P = scale(U[:, :n_par], problem.parameters)
+            col = n_par
+        if start in ("lhs", "random"):
+            if start == "random":
+                U0 = rng.random((n_runs, problem.n))
+            else:
+                U0 = U[:, col:col + problem.n]
+        elif start == "center":
+            U0 = np.full((n_runs, problem.n), 0.5)
+        else:
+            U0 = np.tile(problem.to_u(original_x), (n_runs, 1))
+
+        meta = {
+            "document": info.get("document", ""),
+            "created": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "variables": [vars(s) for s in problem.variables],
+            "parameters": [vars(s) for s in problem.parameters],
+            "objective_names": problem.objective_names,
+            "weights": problem.weights.tolist(),
+            "constraint_names": problem.constraint_names,
+            "limits": problem.limits.tolist(),
+            "types": problem.types,
+            "settings": {k: v for k, v in vars(args).items()},
+            "start_mode": start,
+        }
+        meta_path = os.path.splitext(args.out)[0] + (f".meta.{run_offset}.json" if append else ".meta.json")
+        with open(meta_path, "w", encoding="utf-8") as fh:
+            json.dump(meta, fh, indent=2, default=str)
+
+        n_feasible = 0
+        t_all = time.perf_counter()
+        try:
+            with open(args.out, "a" if append else "w", newline="", encoding="utf-8") as fh:
+                writer = csv.writer(fh)
+                if not append:
+                    writer.writerow(header)
+                    fh.flush()
+                for k in range(n_runs):
+                    run_id = run_offset + k
+                    p = P[k] if n_par else np.zeros(0)
+                    u0 = U0[k]
+                    x0 = problem.to_x(u0)
+                    problem.reset_run(p if n_par else None)
+                    t0 = time.perf_counter()
+                    res: Optional[RunResult] = None
+                    ev: Optional[Evaluation] = None
+                    msg_override = None
+                    try:
+                        res = optimizer(problem, u0, args)
+                        ev = problem.evaluate_x(problem.to_x(res.u))  # final state (cached if already evaluated)
+                    except (ConnectionError, KeyboardInterrupt):
+                        raise
+                    except Exception as err:  # keep sampling even if one run fails
+                        msg_override = f"ERROR: {type(err).__name__}: {err}"
+                        if problem.history:
+                            ev = problem.history[-1]
+                    elapsed = time.perf_counter() - t0
+                    # report the parameter values actually applied (after slider rounding)
+                    p_rep = ev.p if (ev is not None and n_par) else p
+                    feasible = ev is not None and not problem._failed(ev) and ev.max_violation <= args.feas_tol
+                    n_feasible += int(feasible)
+                    writer.writerow(csv_row(run_id, problem, p_rep, x0, ev, res, feasible, elapsed, msg_override))
+                    fh.flush()
+                    obj_txt = f"{ev.objective:.6g}" if ev is not None and math.isfinite(ev.objective) else "nan"
+                    log(f"[{k + 1}/{n_runs}] obj={obj_txt} feasible={feasible} "
+                        f"success={res.success if res else False} status={res.status if res else -100} "
+                        f"evals={problem.n_evals} time={elapsed:.2f}s"
+                        + (f"  {msg_override}" if msg_override else ""))
+        except KeyboardInterrupt:
+            log("Interrupted - rows completed so far are saved.")
+        finally:
+            if not args.no_restore:
+                try:
+                    client.evaluate(original_x.tolist(), original_p.tolist() if n_par else None, count=False)
+                except Exception as err:
+                    log(f"Could not restore slider values: {err}")
+
+        log(f"Done: {n_feasible} feasible run(s), total {time.perf_counter() - t_all:.1f}s -> {os.path.abspath(args.out)}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
