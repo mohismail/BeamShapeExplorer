@@ -63,11 +63,11 @@ cd BeamShapeExplorer
 With this option you download the files again to get updates.
 
 > **Which branch?** Until the Optimization components are merged into the main branch, they are
-> on the `claude/youthful-newton-bm3a2i` branch. Switch to it after cloning:
+> on the `BSE-Opt` branch. Switch to it after cloning:
 >
-> * Git: `git checkout claude/youthful-newton-bm3a2i`
+> * Git: `git checkout BSE-Opt`
 > * Visual Studio: **Git → Fetch**, then click the branch name in the bottom-right of the status
->   bar and pick **Remotes → origin → claude/youthful-newton-bm3a2i**.
+>   bar and pick **Remotes → origin → BSE-Opt**.
 >
 > You have the right branch if the `BeamShapeExplorer/Optimization` folder and the `python`
 > folder exist.
