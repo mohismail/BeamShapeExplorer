@@ -44,6 +44,7 @@ namespace BeamShapeExplorer.Optimization
         private const int InPort = 7;
         private const int InListen = 8;
         private const int InOutput = 9;
+        private const int InStart = 10;
 
         private const int DefaultPort = 8765;
         private const int DefaultTimeoutMs = 10 * 60 * 1000;
@@ -64,6 +65,7 @@ namespace BeamShapeExplorer.Optimization
         private int _evaluationCount;
         private volatile string _outputPath = "";
         private volatile SamplingPlan _plan;
+        private volatile List<double> _startPoint = new List<double>();   // empty = current slider values
 
         private sealed class Snapshot
         {
@@ -126,8 +128,16 @@ namespace BeamShapeExplorer.Optimization
 
             for (int i = InPlan; i <= InTypes; i++)
                 if (i != InObjectives) pManager[i].Optional = true;
+            pManager.AddNumberParameter("Start Point", "X0",
+                "(Optional) Where the optimization of each run starts: one value per variable, in the order of the " +
+                "Variables input. Values outside a slider's Min/Max are clipped; a null entry keeps that slider's " +
+                "current value. Used by every run that has no start point of its own in the Sampling Plan " +
+                "(the plan's start points take priority). Without it, runs start from the current slider values.",
+                GH_ParamAccess.tree);
+
             pManager[InVariables].Optional = true;
             pManager[InOutput].Optional = true;
+            pManager[InStart].Optional = true;
         }
 
         protected override void RegisterOutputParams(GH_Component.GH_OutputParamManager pManager)
@@ -210,6 +220,36 @@ namespace BeamShapeExplorer.Optimization
                 warnings.Add("The plan's start points were made for different Variable sliders than the ones connected here; " +
                              "they are ignored and each run starts from the current variable values.");
             foreach (string w in warnings) AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, w);
+
+            // ---- optional start point (one value per variable; NaN/null keeps the current slider value)
+            List<double> start = ReadNumbers(DA, InStart);
+            string startStatus = "Start point: current slider values";
+            if (start.Count > 0 && start.Count != vars.Count)
+            {
+                AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "Start Point has " + start.Count + " value(s) but there are " +
+                                  vars.Count + " variable(s); give one value per variable, in the order of the Variables input.");
+                start = new List<double>();
+                startStatus = "Start point: ignored (wrong number of values)";
+            }
+            else if (start.Count > 0)
+            {
+                int clipped = 0;
+                for (int i = 0; i < start.Count; i++)
+                {
+                    if (double.IsNaN(start[i])) continue;
+                    double lo = (double)vars[i].Slider.Minimum, hi = (double)vars[i].Slider.Maximum;
+                    if (hi < lo) { double t = lo; lo = hi; hi = t; }
+                    if (start[i] < lo || start[i] > hi) { clipped++; start[i] = Math.Min(hi, Math.Max(lo, start[i])); }
+                }
+                if (clipped > 0)
+                    AddRuntimeMessage(GH_RuntimeMessageLevel.Remark, clipped + " Start Point value(s) were outside the slider bounds and were clipped to them.");
+                startStatus = "Start point: " + string.Join(", ", start.Select((v, i) =>
+                    vars[i].NickName + "=" + (double.IsNaN(v) ? "current" : v.ToString("G6", CultureInfo.InvariantCulture))));
+                if (plan != null && plan.HasStartPoints && StartPointsMatch(plan, vars))
+                    startStatus += " (not used: every run has a start point in the Sampling Plan)";
+            }
+            _startPoint = start;
+
             if (vars.Count == 0)
                 AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, "Connect at least one Number Slider to Variables (V).");
             if (objectives.Count == 0)
@@ -248,6 +288,7 @@ namespace BeamShapeExplorer.Optimization
             status.Add(vars.Count + " variable(s), " + pars.Count + " sample parameter(s), " +
                        objectives.Count + " objective(s), " + constraints.Count + " constraint(s)");
             if (_serverError != null) status.Add("Error: " + _serverError);
+            status.Add(startStatus);
             status.Add(plan != null ? plan.ToString()
                 : "No Sampling Plan connected: the driver makes a multi-start plan over the variables (or runs --plan)");
             status.Add(_outputPath.Length > 0
@@ -537,6 +578,7 @@ namespace BeamShapeExplorer.Optimization
                 { "ok", true },
                 { "document", OnPingDocument()?.DisplayName ?? "" },
                 { "output_path", _outputPath },
+                { "start_point", _startPoint.Count > 0 ? _startPoint : null },
                 { "sampling_method", plan != null && plan.Source == "generated" ? plan.Method : "" },
                 { "variables", varRefs.Select(r => (object)r.ToInfo()).ToList() },
                 { "parameters", parRefs.Select(r => (object)r.ToInfo()).ToList() },

@@ -26,6 +26,7 @@ STATIONS = np.linspace(0.05, 0.5, 5)   # fraction of span
 VARIABLES = [dict(name=f"h{i}", min=0.10, max=0.80, value=0.50, decimals=3, integer=False) for i in range(5)]
 OUTPUT_PATH = ""
 SAMPLING_METHOD = ""
+START_POINT = None  # mimics the Optimization Sampler's Start Point input
 PLAN = None  # mimics a Sampling Plan component connected to the Sampling Plan input
 PARAMETERS = [dict(name="L", min=4.0, max=12.0, value=8.0, decimals=2, integer=False),
               dict(name="w", min=5.0, max=40.0, value=20.0, decimals=2, integer=False)]
@@ -70,7 +71,7 @@ class Handler(socketserver.StreamRequestHandler):
                     resp = {"ok": True, "message": "pong"}
                 elif cmd == "info":
                     o, c, lim, t = solve()
-                    resp = {"ok": True, "document": "mock_shaped_beam", "output_path": OUTPUT_PATH, "sampling_method": SAMPLING_METHOD, "plan": PLAN, "variables": VARIABLES,
+                    resp = {"ok": True, "document": "mock_shaped_beam", "output_path": OUTPUT_PATH, "sampling_method": SAMPLING_METHOD, "plan": PLAN, "start_point": START_POINT, "variables": VARIABLES,
                             "parameters": PARAMETERS, "objective_names": ["Volume", "Steel"],
                             "weights": [1.0, 0.0], "objectives": o,
                             "constraint_names": [f"util[{i}]" for i in range(5)] + ["h_end"],
@@ -107,6 +108,8 @@ if __name__ == "__main__":
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--output-path", default="", help="mimics the component's Output Path input")
     ap.add_argument("--sampling-method", default="", help="mimics the plan component's Sampling Method")
+    ap.add_argument("--start-point", default="",
+                    help="mimic the Start Point input: comma-separated values, one per variable (blank = current)")
     ap.add_argument("--plan-samples", type=int, default=0,
                     help="mimic a connected Sampling Plan component with this many runs (0 = no plan connected)")
     ap.add_argument("--plan-method", default="lhs", help="sampling method of the mimicked Sampling Plan component")
@@ -114,6 +117,8 @@ if __name__ == "__main__":
     a = ap.parse_args()
     OUTPUT_PATH = a.output_path
     SAMPLING_METHOD = a.sampling_method
+    if a.start_point:
+        START_POINT = [float(v) if v.strip() else None for v in a.start_point.split(",")]
     if a.plan_samples:
         from sampling_plan import Slider, make_plan
         sl = lambda d: Slider.from_info(d)

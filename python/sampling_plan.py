@@ -356,6 +356,27 @@ def read_plan(path: str, variables: Sequence[Slider], parameters: Sequence[Slide
     return plan
 
 
+def apply_start_point(variables: Sequence[Slider], start_point) -> Optional[str]:
+    """Use the Optimization Sampler's Start Point as the 'current' value of each variable.
+
+    Every run without a start point of its own (start mode 'current', plan rows without x0) then starts
+    there. None entries keep the slider value. Returns a description for the log, or None if not set."""
+    if not start_point:
+        return None
+    variables = list(variables)
+    if len(start_point) != len(variables):
+        raise SystemExit(f"The component's Start Point has {len(start_point)} value(s) but there are "
+                         f"{len(variables)} variable(s).")
+    parts = []
+    for s, v in zip(variables, start_point):
+        if v is None or not math.isfinite(float(v)):
+            parts.append(f"{s.name}=current")
+            continue
+        s.value = min(max(float(v), s.lo), s.hi)
+        parts.append(f"{s.name}={s.value:g}")
+    return ", ".join(parts)
+
+
 def plan_from_info(data: dict, variables: Sequence[Slider], parameters: Sequence[Slider]) -> Plan:
     """Build a Plan from the 'plan' entry the Optimization Sampler component sends (its Sampling Plan input)."""
     variables, parameters = list(variables), list(parameters)
@@ -368,7 +389,8 @@ def plan_from_info(data: dict, variables: Sequence[Slider], parameters: Sequence
     else:
         X0 = np.tile([s.value for s in variables], (len(runs), 1)).astype(float)
         if variables:
-            notes.append("The plan has no start points; each run starts from the current variable values.")
+            notes.append("The plan has no start points; each run starts from the Start Point "
+                         "(or the current variable values).")
     if not runs:
         raise SystemExit("The Sampling Plan connected in Grasshopper has no runs.")
     source = data.get("source") or "generated"
@@ -471,12 +493,15 @@ def main(argv=None) -> int:
     parameters = [Slider.from_info(d) for d in info.get("parameters", [])]
     if not variables:
         raise SystemExit(f"No variable sliders found in {origin}.")
+    start_text = apply_start_point(variables, info.get("start_point"))
 
     method, method_source = resolve_sampling(cli_sampling, info.get("sampling_method"))
     print(f"Slider bounds from {origin}")
     print("  variables : " + ", ".join(f"{s.name}[{s.lo:g}, {s.hi:g}]" for s in variables))
     print("  parameters: " + (", ".join(f"{s.name}[{s.lo:g}, {s.hi:g}]" for s in parameters) or "(none)"))
     print(f"  sampling  : {method} (from {method_source})")
+    if start_text:
+        print(f"  start     : {start_text} (from component Start Point; used by start mode 'current')")
     plan = make_plan(variables, parameters, args.samples, method, args.start, args.seed, args.grid_levels)
     log_plan(plan, print, args.preview)
     out = write_plan(plan, args.out, info.get("document", ""))

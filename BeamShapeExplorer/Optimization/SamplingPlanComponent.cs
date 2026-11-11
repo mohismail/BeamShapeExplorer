@@ -65,7 +65,7 @@ namespace BeamShapeExplorer.Optimization
             pManager.AddTextParameter("Start", "St",
                 "Start point of each run: auto (default: current values when there are Sample Parameters, otherwise " +
                 "sampled), sampled (drawn with the sampling method), random, center or current (each run starts from the " +
-                "variable values at the moment the optimization study begins).",
+                "Optimization Sampler's Start Point, or from the variable values when the optimization study begins).",
                 GH_ParamAccess.item, "auto");
             pManager.AddIntegerParameter("Seed", "S", "Random seed. The same inputs and seed always give the same plan.",
                 GH_ParamAccess.item, 0);

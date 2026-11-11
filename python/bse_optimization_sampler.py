@@ -44,7 +44,7 @@ from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
-from sampling_plan import (Plan, Slider, add_plan_arguments, log_plan, make_plan, normalize_sampling,
+from sampling_plan import (Plan, Slider, add_plan_arguments, apply_start_point, log_plan, make_plan, normalize_sampling,
                            plan_from_info, print_sampling_methods, read_plan, resolve_sampling, write_plan)
 
 try:
@@ -553,12 +553,16 @@ def main(argv=None) -> int:
         problem = GrasshopperProblem(client, info, args.nan_penalty, args.fail_on_gh_error)
         original_x = np.array([s.value for s in problem.variables])
         original_p = np.array([s.value for s in problem.parameters])
+        # runs without their own start point start here (the sliders are restored to original_x at the end)
+        start_text = apply_start_point(problem.variables, info.get("start_point"))
 
         log(f"Connected to '{info.get('document', '')}' on {args.host}:{args.port}")
         log("  variables : " + ", ".join(f"{s.name}[{s.lo:g}, {s.hi:g}]" for s in problem.variables))
         log("  parameters: " + (", ".join(f"{s.name}[{s.lo:g}, {s.hi:g}]" for s in problem.parameters) or "(none)"))
         log(f"  objectives: {problem.objective_names} weights={problem.weights.tolist()}")
         log(f"  {problem.m} constraint(s)")
+        log(f"  start     : {start_text} (from component Start Point)" if start_text
+            else "  start     : current slider values")
         for s in problem.variables + problem.parameters:
             resolution = 10.0 ** (-s.decimals) / max(s.hi - s.lo, 1e-300)
             if not s.integer and resolution > 1e-4:

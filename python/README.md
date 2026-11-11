@@ -141,7 +141,7 @@ The definition uses two components, one per step:
 | **Variables (V)** | *(optional)* The same variable sliders that go into the Optimization Sampler | Needed only for start points made by the plan (Start = `sampled`, `random` or `center`). |
 | **Samples (N)** | Integer, default 50 | Number of optimization runs. Grid sampling uses Grid Levels instead. |
 | **Sampling Method (M)** | Text, default `lhs` | `lhs`, `lhs-optimized`, `lhs-centered`, `sobol`, `halton`, `random` or `grid`. See [Sampling methods](#sampling-methods). |
-| **Start (St)** | Text, default `auto` | Where each run starts: `sampled` (drawn with the sampling method), `random`, `center`, or `current` (the variable values when the study begins). `auto` means `current` when there are Sample Parameters, otherwise `sampled`. |
+| **Start (St)** | Text, default `auto` | Where each run starts: `sampled` (drawn with the sampling method), `random`, `center`, or `current` (the Optimization Sampler's **Start Point**, or else the variable values when the study begins). `auto` means `current` when there are Sample Parameters, otherwise `sampled`. |
 | **Seed (S)** | Integer, default 0 | The same inputs and seed always give the same plan. |
 | **Grid Levels (GL)** | *(optional)* Integers | For `grid`: levels per sampled dimension, one value or one per dimension. |
 | **Plan File (F)** | *(optional)* Text | CSV path for Save or Load. A relative path is resolved from the folder of the saved `.gh` file. |
@@ -169,6 +169,7 @@ writes the file when the plan changes or when Save is switched on, not on every 
 | **Port** | Integer | The default is 8765. It must match `--port` in Python. |
 | **Listen (L)** | **Boolean Toggle** | Set it to True to start the server. |
 | **Output Path (Out)** | *(optional)* Text, e.g. from a Panel | Where the results CSV is saved. It can be a file (`D:\studies\beam01\runs.csv`) or a folder, in which case the file is named `optimization_samples.csv`. A relative path such as `results\runs.csv` is resolved from the folder of the saved `.gh` file. Missing folders are created. |
+| **Start Point (X0)** | *(optional)* Numbers, one per variable in the order of the Variables input | Where each run's optimization starts. Values outside a slider's Min/Max are clipped, and a null entry keeps that slider's value. It is used by every run that has no start point of its own in the plan (see below). Without it, runs start from the current slider values. |
 
 The **Status** output shows the connected plan and where the results will be saved. The
 **Status**, **Variable Names**, **Lower/Upper Bounds**, **Weighted Objective**, **Constraint
@@ -176,6 +177,17 @@ Violation** and **Evaluations** outputs let you check the setup before you start
 driver. The Optimization Sampler finds the Sample Parameter sliders through the plan, so don't
 wire them into the Optimization Sampler as well. If the plan has start points made for different
 Variable sliders than the ones connected here, it warns and ignores them.
+
+**Where each run starts.** For each variable, the driver uses the first of these that is set:
+
+1. the run's start point in the Sampling Plan (`x0:<name>` in a plan CSV, or Start = `sampled`, `random` or `center` on the Sampling Plan component)
+2. the Optimization Sampler's **Start Point**
+3. the slider's current value when the study begins
+
+So a typical setup is a plan with Start = `current` (the default with Sample Parameters) plus a
+Start Point, for example a known good design, so every sampled run starts from that design. The
+driver prints the start point it uses, and the sliders return to their original values when the
+study ends.
 
 Typical BSE example:
 
@@ -378,7 +390,7 @@ Plan options (see `python python/sampling_plan.py --help`):
 | `--samples N` | 50 | Number of runs in the plan |
 | `--sampling METHOD` | Sampling Plan component's method, else `lhs` | How the parameters (and sampled start points) are drawn. See [Sampling methods](#sampling-methods). |
 | `--grid-levels` | – | For `grid` only: levels per dimension, as one value (`5`) or one per dimension (`3,5,4`) |
-| `--start auto\|sampled\|random\|center\|current` | `auto` | Start point of each run, as on the component (`lhs` is accepted for `sampled`). Unlike the component, `current` here writes the slider values at the time the plan is made into the CSV. |
+| `--start auto\|sampled\|random\|center\|current` | `auto` | Start point of each run, as on the component (`lhs` is accepted for `sampled`). Unlike the component, `current` here writes the start values into the CSV: the Optimization Sampler's Start Point if it is set, else the slider values at the time the plan is made. |
 | `--seed` | 0 | Random seed. The same settings and seed always give the same plan. |
 | `--from-meta FILE` | – | Read the slider bounds from a `.meta.json` written by an earlier plan or study, instead of connecting to Grasshopper. This makes plans without Rhino running. |
 | `--preview N` | 5 | Number of rows to print |
@@ -544,7 +556,8 @@ python python/mock_gh_server.py --port 8765
 ```
 
 To mimic a connected Sampling Plan component, add `--plan-samples 10` (and optionally
-`--plan-method sobol`, `--plan-start sampled`). Then, in a second terminal, either run the
+`--plan-method sobol`, `--plan-start sampled`). To mimic a Start Point, add for example
+`--start-point 0.3,0.3,0.3,0.3,0.3`. Then, in a second terminal, either run the
 connected plan:
 
 ```bash
@@ -569,7 +582,7 @@ object per line. Every reply has `"ok": true|false`; a failed request also has `
 | `cmd` | Request fields | Reply |
 |---|---|---|
 | `ping` | – | `{"ok":true,"message":"pong"}` |
-| `info` | – | `document`, `output_path`, `sampling_method`, `variables` / `parameters` (`name`, `min`, `max`, `value`, `decimals`, `integer`; the parameters are the connected plan's sliders), `plan` (`null`, or `runs`, `P`, `X0` (`null` without start points), `parameter_names`, `variable_names`, `method`, `start`, `seed`, `grid_levels`, `source`), `objective_names`, `weights`, `objectives`, `constraint_names`, `limits`, `types`, `constraints` |
+| `info` | – | `document`, `output_path`, `start_point` (`null`, or one value per variable, `null` entries = current), `sampling_method`, `variables` / `parameters` (`name`, `min`, `max`, `value`, `decimals`, `integer`; the parameters are the connected plan's sliders), `plan` (`null`, or `runs`, `P`, `X0` (`null` without start points), `parameter_names`, `variable_names`, `method`, `start`, `seed`, `grid_levels`, `source`), `objective_names`, `weights`, `objectives`, `constraint_names`, `limits`, `types`, `constraints` |
 | `evaluate` | `variables: [..]`, optional `parameters: [..]` (in the plan's parameter order), optional `timeout` (s) | Sets the sliders, solves once and returns the applied `variables`/`parameters`, `objectives`, `weights`, `objective`, `constraints`, `limits`, `types`, `violations`, `solve_time`, `gh_errors`, `evaluation` |
 | `set` | Same as `evaluate` | Same as `evaluate`, but the call does not add to the evaluation counter (used to restore the sliders) |
 | `close` | – | Closes the connection |
