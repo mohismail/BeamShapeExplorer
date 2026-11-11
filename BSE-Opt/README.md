@@ -16,14 +16,14 @@ methods* paper, split into two separate steps:
    the final objective and constraint values, a success/status code and the run time. You can
    use the rows as training data for a surrogate model (for example, a neural network).
 
-There are four parts, all on the *Beam Shape Explorer → Optimization* tab or in `python/`:
+There are four parts, all on the *Beam Shape Explorer → Optimization* tab or in `BSE-Opt/`:
 
 | Part | Where | Role |
 |---|---|---|
 | **Sampling Plan** component | `BeamShapeExplorer/Optimization/SamplingPlanComponent.cs` | Step 1: owns the design inputs (Sample Parameter sliders) and the sampling settings. Creates the plan on the canvas, previews it, and can save it to or load it from CSV. |
 | **Optimization Sampler** component | `BeamShapeExplorer/Optimization/OptimizationSampler.cs` | Step 2: takes the variables, objectives, constraints and the plan, and serves them on a localhost TCP socket for the Python driver. |
-| **Sampling plan script** *(optional)* | `python/sampling_plan.py` | Makes a plan CSV from the command line instead of the component, e.g. without Rhino running. |
-| **Python driver** | `python/bse_optimization_sampler.py` | Step 2: connects to the Optimization Sampler, runs an optimization for every plan row through Grasshopper/Rhino and writes the results CSV. |
+| **Sampling plan script** *(optional)* | `BSE-Opt/sampling_plan.py` | Makes a plan CSV from the command line instead of the component, e.g. without Rhino running. |
+| **Python driver** | `BSE-Opt/bse_optimization_sampler.py` | Step 2: connects to the Optimization Sampler, runs an optimization for every plan row through Grasshopper/Rhino and writes the results CSV. |
 
 The paper linked Grasshopper and NLopt with Socket.IO. This implementation uses plain TCP with
 newline-delimited JSON instead, so there are no extra dependencies on either side.
@@ -69,7 +69,7 @@ With this option you download the files again to get updates.
 > * Visual Studio: **Git → Fetch**, then click the branch name in the bottom-right of the status
 >   bar and pick **Remotes → origin → BSE-Opt**.
 >
-> You have the right branch if the `BeamShapeExplorer/Optimization` folder and the `python`
+> You have the right branch if the `BeamShapeExplorer/Optimization` folder and the `BSE-Opt`
 > folder exist.
 
 To get later updates, run `git pull` in the repository folder, or use **Git → Pull** in
@@ -249,7 +249,7 @@ everywhere.
 
 The Python scripts are in the repository you downloaded in
 [Download the repository](#download-the-repository). Open a terminal in the repository folder,
-the one that contains the `python` folder. Run every command in this README from there:
+the one that contains the `BSE-Opt` folder. Run every command in this README from there:
 
 ```powershell
 cd C:\path\to\BeamShapeExplorer
@@ -292,7 +292,7 @@ With the environment active:
 
 ```powershell
 python -m pip install --upgrade pip
-python -m pip install -r python/requirements.txt
+python -m pip install -r BSE-Opt/requirements.txt
 ```
 
 Optionally, add NLopt:
@@ -305,7 +305,7 @@ python -m pip install nlopt
 
 ```powershell
 python -c "import numpy, scipy; print('numpy', numpy.__version__, '| scipy', scipy.__version__)"
-python python/bse_optimization_sampler.py --list-sampling
+python BSE-Opt/bse_optimization_sampler.py --list-sampling
 ```
 
 The first command prints the package versions, and the second lists the sampling methods. To
@@ -363,7 +363,7 @@ Grasshopper, so there is nothing to run in Python for this step.
 make plans without Rhino running:
 
 ```bash
-python python/sampling_plan.py --samples 200 --sampling lhs --out study/plan.csv
+python BSE-Opt/sampling_plan.py --samples 200 --sampling lhs --out study/plan.csv
 ```
 
 It reads the slider names and bounds from Grasshopper (the Sample Parameters come from the
@@ -382,7 +382,7 @@ connected Sampling Plan component), prints a preview of the first rows, and writ
 The Sampling Plan component's **Save** writes exactly the same format, so plans from either
 source can be loaded by the component (**Load**) or run by the driver (`--plan`).
 
-Plan options (see `python python/sampling_plan.py --help`):
+Plan options (see `python BSE-Opt/sampling_plan.py --help`):
 
 | Option | Default | Meaning |
 |---|---|---|
@@ -422,7 +422,7 @@ L,w
 ### Sampling methods
 
 Choose the method with the Sampling Plan component's **Sampling Method** input, or with
-`--sampling` when the plan is made in Python. `python python/sampling_plan.py --list-sampling`
+`--sampling` when the plan is made in Python. `python BSE-Opt/sampling_plan.py --list-sampling`
 prints the list below. The component and the Python scripts implement the same methods;
 `sobol` and `halton` produce the same base sequences (Joe–Kuo direction numbers, as in SciPy),
 with a random digital shift (Sobol) or digit permutation (Halton) seeded by **Seed**.
@@ -447,7 +447,7 @@ parameters, and the plan preview shows it before anything runs.
 ### Step 2 – Run the optimizations
 
 ```bash
-python python/bse_optimization_sampler.py --out study/runs.csv
+python BSE-Opt/bse_optimization_sampler.py --out study/runs.csv
 ```
 
 The driver runs one constrained optimization per plan row. It takes the plan from the first of
@@ -464,7 +464,7 @@ The results go to the Optimization Sampler's **Output Path**. `--out` overrides 
 set, the driver writes `optimization_samples.csv` in the folder it was run from. It prints the
 location it uses, and where that location came from, when it starts.
 
-Optimization options (see `python python/bse_optimization_sampler.py --help`):
+Optimization options (see `python BSE-Opt/bse_optimization_sampler.py --help`):
 
 | Option | Default | Meaning |
 |---|---|---|
@@ -493,7 +493,7 @@ options as `sampling_plan.py` (`--samples`, `--sampling`, `--grid-levels`, `--st
 Without Sample Parameters, this is a multi-start study of the variables:
 
 ```bash
-python python/bse_optimization_sampler.py --samples 64 --sampling sobol --out study/runs.csv
+python BSE-Opt/bse_optimization_sampler.py --samples 64 --sampling sobol --out study/runs.csv
 ```
 
 The plan is still saved separately, as `study/runs.plan.csv` next to the results, so you can
@@ -511,7 +511,7 @@ Results are saved after every run, so an interrupted study (Ctrl+C, a Rhino cras
 loses at most the run in progress. To finish it, run the same command again with `--resume`:
 
 ```bash
-python python/bse_optimization_sampler.py --plan study/plan.csv --out study/runs.csv --resume
+python BSE-Opt/bse_optimization_sampler.py --plan study/plan.csv --out study/runs.csv --resume
 ```
 
 The driver skips every run number that is already in `runs.csv` and appends the rest. It uses
@@ -552,7 +552,7 @@ surrogate model.
 load parameters; flexural utilization `<= 1` and end-depth `>=` constraints):
 
 ```bash
-python python/mock_gh_server.py --port 8765
+python BSE-Opt/mock_gh_server.py --port 8765
 ```
 
 To mimic a connected Sampling Plan component, add `--plan-samples 10` (and optionally
@@ -561,17 +561,17 @@ To mimic a connected Sampling Plan component, add `--plan-samples 10` (and optio
 connected plan:
 
 ```bash
-python python/bse_optimization_sampler.py --port 8765 --out mock_runs.csv
+python BSE-Opt/bse_optimization_sampler.py --port 8765 --out mock_runs.csv
 ```
 
 or make a plan in Python and run it:
 
 ```bash
-python python/sampling_plan.py --port 8765 --samples 10 --out mock_plan.csv
+python BSE-Opt/sampling_plan.py --port 8765 --samples 10 --out mock_plan.csv
 ```
 
 ```bash
-python python/bse_optimization_sampler.py --port 8765 --plan mock_plan.csv --out mock_runs.csv
+python BSE-Opt/bse_optimization_sampler.py --port 8765 --plan mock_plan.csv --out mock_runs.csv
 ```
 
 ## 6. Protocol (for custom drivers)

@@ -11,7 +11,7 @@ namespace BeamShapeExplorer.Optimization
     /// A sampling plan: one row per optimization run with the value of each Sample Parameter slider (held
     /// fixed during the run) and, optionally, the start value of each Variable slider. Produced by the
     /// Sampling Plan component and consumed by the Optimization Sampler component. The CSV format is the
-    /// same as python/sampling_plan.py: run, param:&lt;name&gt; ..., x0:&lt;name&gt; ...
+    /// same as BSE-Opt/sampling_plan.py: run, param:&lt;name&gt; ..., x0:&lt;name&gt; ...
     /// </summary>
     public class SamplingPlan
     {
@@ -142,7 +142,7 @@ namespace BeamShapeExplorer.Optimization
         public static string MetaPath(string csvPath) =>
             Path.Combine(Path.GetDirectoryName(csvPath) ?? "", Path.GetFileNameWithoutExtension(csvPath) + ".meta.json");
 
-        /// <summary>Writes the plan CSV and a .meta.json next to it (same format as python/sampling_plan.py).</summary>
+        /// <summary>Writes the plan CSV and a .meta.json next to it (same format as BSE-Opt/sampling_plan.py).</summary>
         public void WriteCsv(string path, string document)
         {
             string dir = Path.GetDirectoryName(path);
@@ -271,7 +271,7 @@ namespace BeamShapeExplorer.Optimization
             if (clipped > 0) plan.Notes.Add(clipped + " plan value(s) were outside the slider bounds and were clipped to them.");
             if (plan.Runs.Distinct().Count() != plan.Runs.Count) throw new InvalidDataException("The plan has duplicate run numbers.");
 
-            // keep the settings of a plan written by this component or python/sampling_plan.py
+            // keep the settings of a plan written by this component or BSE-Opt/sampling_plan.py
             try
             {
                 string metaPath = MetaPath(path);

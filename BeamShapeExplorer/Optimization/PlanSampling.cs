@@ -6,7 +6,7 @@ namespace BeamShapeExplorer.Optimization
     /// <summary>
     /// Sampling methods for sampling plans. All methods return points in the unit hypercube [0, 1]^d,
     /// which the plan scales to the slider bounds. A seeded <see cref="Random"/> makes every plan repeatable.
-    /// The names and behaviour match python/sampling_plan.py.
+    /// The names and behaviour match BSE-Opt/sampling_plan.py.
     /// </summary>
     internal static class PlanSampling
     {

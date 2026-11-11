@@ -78,7 +78,7 @@ namespace BeamShapeExplorer.Optimization
                 "from the folder of this .gh file.", GH_ParamAccess.item);
             pManager.AddBooleanParameter("Load", "Ld",
                 "Load the plan from Plan File instead of generating it (e.g. a plan edited in Excel or made with " +
-                "python/sampling_plan.py).", GH_ParamAccess.item, false);
+                "BSE-Opt/sampling_plan.py).", GH_ParamAccess.item, false);
             pManager.AddBooleanParameter("Save", "Sv",
                 "Save the generated plan to Plan File (use a Button or Toggle). A .meta.json with the settings is written next to it.",
                 GH_ParamAccess.item, false);

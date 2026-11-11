@@ -30,7 +30,7 @@ namespace BeamShapeExplorer.Optimization
     ///
     /// The component runs a small TCP server on localhost that speaks newline-delimited JSON.
     /// Each "evaluate" request sets the sliders, solves the definition on the Rhino UI thread and returns
-    /// the objective and constraint values. See python/README.md for the protocol and the Python driver.
+    /// the objective and constraint values. See BSE-Opt/README.md for the protocol and the Python driver.
     /// </summary>
     public class OptimizationSampler : GH_Component
     {
@@ -81,7 +81,7 @@ namespace BeamShapeExplorer.Optimization
         public OptimizationSampler()
           : base("Optimization Sampler", "OptSampler",
               "Step 2 of optimization sampling: connects this definition to the Python driver " +
-              "(python/bse_optimization_sampler.py), which runs one constrained optimization per row of the " +
+              "(BSE-Opt/bse_optimization_sampler.py), which runs one constrained optimization per row of the " +
               "Sampling Plan. Variables are Number Sliders whose Min/Max are the optimization bounds; objectives " +
               "and constraints are any numbers. The driver saves the results to CSV.",
               "Beam Shape Explorer", "Optimization")
