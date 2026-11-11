@@ -506,7 +506,12 @@ def main(argv=None) -> int:
     log_plan(plan, print, args.preview)
     out = write_plan(plan, args.out, info.get("document", ""))
     print(f"Wrote {len(plan)} run(s) to {out}")
-    print(f"Run it with:  python bse_optimization_sampler.py --plan \"{out}\"")
+    driver = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bse_optimization_sampler.py")
+    try:
+        driver = os.path.relpath(driver)
+    except ValueError:  # different drive on Windows
+        pass
+    print(f"Run it with:  python \"{driver}\" --plan \"{out}\"")
     return 0
 
 
