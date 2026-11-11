@@ -30,7 +30,101 @@ newline-delimited JSON instead, so there are no extra dependencies on either sid
 
 ---
 
-## 1. Grasshopper setup
+## 1. Download and build BSE
+
+The Sampling Plan and Optimization Sampler components are part of the Beam Shape Explorer (BSE)
+Grasshopper plugin, so you build the plugin from this repository and install it in Grasshopper.
+
+> The prebuilt `BeamShapeExplorer/BSE.zip` in the repository is an older (2021) build. It does
+> **not** contain the Optimization components, so build the plugin as described below.
+
+### Download the repository
+
+Use any one of these options. Choose a folder that is easy to find, such as
+`C:\Users\<you>\Documents\BeamShapeExplorer`.
+
+**Option A – Git (command line).** Install [Git](https://git-scm.com/downloads), then in a terminal:
+
+```bash
+git clone https://github.com/mohismail/BeamShapeExplorer.git
+```
+
+```bash
+cd BeamShapeExplorer
+```
+
+**Option B – Visual Studio.** On the start window choose **Clone a repository** (or
+**Git → Clone Repository…**), enter `https://github.com/mohismail/BeamShapeExplorer` and click
+**Clone**.
+
+**Option C – ZIP download (no Git).** On the
+[repository page](https://github.com/mohismail/BeamShapeExplorer), choose the branch you need
+(see the note below) from the branch menu, then **Code → Download ZIP**, and extract the ZIP.
+With this option you download the files again to get updates.
+
+> **Which branch?** Until the Optimization components are merged into the main branch, they are
+> on the `claude/youthful-newton-bm3a2i` branch. Switch to it after cloning:
+>
+> * Git: `git checkout claude/youthful-newton-bm3a2i`
+> * Visual Studio: **Git → Fetch**, then click the branch name in the bottom-right of the status
+>   bar and pick **Remotes → origin → claude/youthful-newton-bm3a2i**.
+>
+> You have the right branch if the `BeamShapeExplorer/Optimization` folder and the `python`
+> folder exist.
+
+To get later updates, run `git pull` in the repository folder, or use **Git → Pull** in
+Visual Studio. Then build again.
+
+### Build the plugin (Windows)
+
+1. Install **Visual Studio 2019 or 2022** (Community is free) with the **.NET desktop
+   development** workload. Under *Individual components*, also select the **.NET Framework 4.8
+   targeting pack**.
+2. Open `BeamShapeExplorer.sln` from the repository folder.
+3. In *Solution Explorer*, right-click the solution and choose **Restore NuGet Packages**. This
+   downloads the Grasshopper and RhinoCommon references; you don't need Rhino's SDK installed.
+4. Set the configuration in the toolbar to **Release**.
+5. Choose **Build → Build Solution**. The *Output* window should end with `Build: 1 succeeded`.
+
+The plugin is written to **`BeamShapeExplorer\bin\BeamShapeExplorer.gha`**. The build renames
+the `.dll` to `.gha` automatically, so the `.gha` is the file to install.
+
+The plugin is built against Rhino 6, and that build also loads in Rhino 7 and Rhino 8.
+
+**Command-line alternative.** In a *Developer PowerShell for Visual Studio* (Visual Studio 2019
+16.5 or later), from the repository folder:
+
+```powershell
+msbuild BeamShapeExplorer.sln -restore -p:RestorePackagesConfig=true -p:Configuration=Release
+```
+
+### Install it in Grasshopper
+
+1. Start Rhino and run the `Grasshopper` command.
+2. In Grasshopper, choose **File → Special Folders → Components Folder**. This opens the
+   Libraries folder, usually `%APPDATA%\Grasshopper\Libraries`.
+3. Close Rhino completely.
+4. If an older `BeamShapeExplorer.gha` is in the Libraries folder (or a subfolder), delete it.
+   Grasshopper won't load two copies.
+5. Copy the new `BeamShapeExplorer\bin\BeamShapeExplorer.gha` into the Libraries folder. A
+   subfolder such as `Libraries\BeamShapeExplorer\` also works.
+6. If the `.gha` was downloaded or emailed rather than built on this computer, right-click it,
+   choose **Properties**, tick **Unblock** and click **OK**.
+7. Start Rhino and Grasshopper again.
+
+Open the **Beam Shape Explorer** tab. The **Optimization** panel should contain **Sampling
+Plan** and **Optimization Sampler**. After each new build, close Rhino and repeat steps 4–7.
+
+| Problem | Fix |
+|---|---|
+| Build error about missing NuGet packages or `RhinoCommon.targets` | Run **Restore NuGet Packages** (step 3 of the build), then build again. |
+| Build error about the .NET Framework 4.8 targeting pack | Install it with the *Visual Studio Installer* (*Modify → Individual components*). |
+| Other BSE components appear, but the Optimization panel is missing | Grasshopper is loading an old `.gha`. Search the Libraries folder for other copies, and check that you built the right branch. |
+| No Beam Shape Explorer tab at all | Check that the `.gha` is unblocked and in the Libraries folder. In Rhino, the `GrasshopperDeveloperSettings` command lists the folders Grasshopper loads from. |
+| Rhino 8 shows a load error for the plugin | Rhino 8 runs on .NET Core by default. Run the `SetDotNetRuntime` command, choose **NETFramework**, and restart Rhino. |
+| You use Rhino for Mac | Building the solution needs Windows. Loading the Windows-built `.gha` in Rhino for Mac hasn't been tested. |
+
+## 2. Grasshopper setup
 
 The definition uses two components, one per step:
 
@@ -100,7 +194,7 @@ The components and the driver name each variable and parameter after the slider 
 so give the sliders meaningful names. The CSV columns use these names. Objective and constraint
 names come from the wired sources, e.g. `Flex.ratio[3]`.
 
-## 2. Python environment setup
+## 3. Python environment setup
 
 The driver runs in a normal, **external** Python installation, not in Rhino's built-in Python.
 You only need to do this setup once per computer.
@@ -139,10 +233,11 @@ On Windows the `py` launcher is the most reliable command. On macOS use `python3
 below use these names until the virtual environment is active; after that, plain `python` works
 everywhere.
 
-### Step 2 – Get the scripts
+### Step 2 – Open a terminal in the repository folder
 
-Clone the repository, or download it from GitHub as a ZIP (*Code → Download ZIP*) and extract it.
-Then open a terminal in the repository folder, the one that contains the `python` folder:
+The Python scripts are in the repository you downloaded in
+[Download the repository](#download-the-repository). Open a terminal in the repository folder,
+the one that contains the `python` folder. Run every command in this README from there:
 
 ```powershell
 cd C:\path\to\BeamShapeExplorer
@@ -203,7 +298,7 @@ python python/bse_optimization_sampler.py --list-sampling
 
 The first command prints the package versions, and the second lists the sampling methods. To
 test the full workflow without Rhino, use the mock server described in
-[Testing without Rhino](#4-testing-without-rhino).
+[Testing without Rhino](#5-testing-without-rhino).
 
 ### Alternative: conda
 
@@ -230,7 +325,7 @@ conda install -c conda-forge nlopt
 | `pip install nlopt` fails | No prebuilt NLopt package exists for your Python version. Use the conda-forge package, or use the SciPy algorithms (the default COBYLA needs no extra packages). |
 | `Could not connect to Grasshopper at 127.0.0.1:8765` | In Grasshopper, set the component's **Listen** input to True and check that its **Port** matches `--port`. The connection stays on your own computer, so the firewall should not need changes. |
 
-## 3. Running
+## 4. Running
 
 Before running:
 
@@ -238,7 +333,7 @@ Before running:
    True. The component message reads `Listening :8765`.
 2. Open a terminal in the repository folder and activate the virtual environment
    (`.venv\Scripts\Activate.ps1` on Windows, `source .venv/bin/activate` on macOS; see
-   [Python environment setup](#2-python-environment-setup)).
+   [Python environment setup](#3-python-environment-setup)).
 
 ### Step 1 – Create the sampling plan
 
@@ -439,7 +534,7 @@ the completed runs. It also writes `runs.meta.json` next to the CSV with the bou
 constraint types/limits, settings and the plan that was run, which you can reuse when you fit a
 surrogate model.
 
-## 4. Testing without Rhino
+## 5. Testing without Rhino
 
 `mock_gh_server.py` speaks the same protocol for a toy shaped beam (5 depth variables; span and
 load parameters; flexural utilization `<= 1` and end-depth `>=` constraints):
@@ -466,7 +561,7 @@ python python/sampling_plan.py --port 8765 --samples 10 --out mock_plan.csv
 python python/bse_optimization_sampler.py --port 8765 --plan mock_plan.csv --out mock_runs.csv
 ```
 
-## 5. Protocol (for custom drivers)
+## 6. Protocol (for custom drivers)
 
 Each request is one JSON object per line, sent to `127.0.0.1:<Port>`, and each reply is one JSON
 object per line. Every reply has `"ok": true|false`; a failed request also has `"error"`.
