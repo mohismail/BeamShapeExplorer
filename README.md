@@ -9,14 +9,14 @@ The **Sampling Plan** and **Optimization Sampler** components (*Beam Shape Explo
 
 ## Shear and moment diagrams (Beam Loads, Beam Supports, Shear and Moment Diagram)
 
-Four components on the *Beam Shape Explorer → Loads* tab calculate and plot the shear and bending moment along a beam with any number of supports and loads:
+Three components on the *Beam Shape Explorer → Loads* tab calculate and plot the shear and bending moment along a beam with any number of supports and loads. The existing **Load Envelope from Selfweight** component adds the beam's own weight:
 
 ```
- Beam Loads ──────────Loads──┐
- Beam Self-Weight ────Loads──┤   (both into the same Loads input)
- Beam Supports ───────Sup────┼──► Shear and Moment Diagram ──Vu, Mu──► Flexural Analysis / Shear Analysis
- Beam Builder ──SpCrv────────┘
-     └──BBrep──► Beam Self-Weight
+ Beam Loads ─────────────────────Loads──┐
+ Load Envelope from Selfweight ──Loads──┤   (both into the same Loads input)
+ Beam Supports ──────────────────Sup────┼──► Shear and Moment Diagram ──Vu, Mu──► Flexural Analysis / Shear Analysis
+ Beam Builder ──SpCrv───────────────────┘
+     └──BBrep──► Load Envelope from Selfweight
 ```
 
 **Beam Loads** defines the loads. Each list item is one load, and shorter lists repeat their last item:
@@ -32,17 +32,16 @@ Four components on the *Beam Shape Explorer → Loads* tab calculate and plot th
 
 For example, `Load Type = point, distributed`, `Magnitude = 20, 10`, `Location = 2.5, 0` gives a 20 kN point load at 2.5 m and a uniform 10 kN/m load over the whole span. Several Beam Loads components can be connected to the same Loads input.
 
-**Beam Self-Weight** turns the beam's own weight into distributed loads. Connect **Material Properties**, the Beam Builder's **BBrep** and **SpCrv**, and its Loads output goes into the same Loads input as Beam Loads. It measures the brep's cross-section area at *n* evenly spaced sections along the span (default 21), multiplies it by the concrete density, and makes the load vary linearly between the sections. So a shaped beam that is deeper at the supports gets a heavier load there. Other inputs and outputs:
+**Load Envelope from Selfweight** adds the beam's own weight. Connect **Material Properties**, the Beam Builder's **BBrep** and **SpCrv**, then connect its **Loads** output to the same Loads input as Beam Loads. It splits the beam into *n* equal segments (default 10) and weighs each one from its volume and the concrete density. Each segment becomes a uniform distributed load, so a shaped beam that is deeper at the supports gets a heavier load there. Its existing outputs (the `qw` load envelope, the split curves for Karamba, the load graphs and the segments) are unchanged. New inputs and outputs:
 
 | Input / output | Meaning |
 |---|---|
-| **Load Factor** | Multiplies the self-weight, e.g. 1.2 or 1.4 for a factored dead load. Default 1.0. |
+| **Load Factor** | Multiplies the selfweight, e.g. 1.2 or 1.4 for a factored dead load. Default 1.0. It applies to `qw` as well. |
 | **Density (kg/m3)** *(optional)* | Overrides the concrete density from Material Properties, e.g. about 2400–2500 kg/m³ to include reinforcement. Only the brep's volume is weighed. |
-| **Self-Weight (kN/m)**, **Section Locations**, **Section Areas** | The values at each section |
-| **Total Self-Weight (kN)** | The total load. The Description output compares it with the brep's volume, and the component warns if they differ by more than 3% (then increase *n*). |
-| **Section Curves** | The cross-section outlines that were measured, for checking |
+| **Loads** | The selfweight as distributed loads (positive downward) for Shear and Moment Diagram |
+| **Total Selfweight (kN)** | The total load |
 
-In the diagram preview, the self-weight segments are drawn as one load with one label, for example "Self-weight: w = 4.2 to 6.5 kN/m". Use the same span curve for Beam Self-Weight and Shear and Moment Diagram, since both measure locations along it from its start.
+The reactions from the selfweight are exact. The moments approach the exact values as *n* grows: for a beam with a parabolic depth, *n* = 10 gives moments within about 0.6%, and *n* = 20 within about 0.15%. In the diagram preview, the segments are drawn as one load with one label, for example "Self-weight: w = 4.2 to 6.5 kN/m". The segments are located along the span curve given to this component, so use the same span curve on Shear and Moment Diagram.
 
 **Beam Supports** defines the supports from Grasshopper **points** and a **Support Type** per point: `fixed`, `pinned` or `roller` (`rolling` also works). The points are projected onto the span curve, so the Beam Builder's span end points, or points along it, work directly. Fixed supports restrain movement and rotation; pinned and roller supports restrain movement only. They behave the same for the vertical loads analyzed here.
 

@@ -422,14 +422,13 @@ namespace BeamShapeExplorer.ShearMoment
             {
                 var segs = group.OrderBy(l => l.A).ToList();
                 double h = 0.06 * length;
+                // one connected profile: steps between uniform segments become vertical jumps
+                var top = new Polyline();
                 foreach (SolverLoad s in segs)
-                {
-                    var top = new Polyline();
-                    foreach (double x in new[] { s.A, s.B })
-                        if (Frame(span, x, up, out Point3d p, out _, out Vector3d n))
-                            top.Add(p + n * (maxW > 0 ? h * Math.Abs(x == s.A ? s.Wa : s.Wb) / maxW : 0) + n * 0.01 * length);
-                    if (top.Count == 2) pv.LoadProfiles.Add(top);
-                }
+                    foreach (var end in new[] { new { X = s.A, W = s.Wa }, new { X = s.B, W = s.Wb } })
+                        if (Frame(span, end.X, up, out Point3d p, out _, out Vector3d n))
+                            top.Add(p + n * ((maxW > 0 ? h * Math.Abs(end.W) / maxW : 0) + 0.01 * length));
+                if (top.Count >= 2) pv.LoadProfiles.Add(top);
                 double a = segs[0].A, b = segs.Max(s => s.B);
                 int arrows = Math.Max(2, (int)Math.Round((b - a) / length * 12) + 1);
                 for (int k = 0; k < arrows; k++)
