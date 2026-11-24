@@ -9,12 +9,14 @@ The **Sampling Plan** and **Optimization Sampler** components (*Beam Shape Explo
 
 ## Shear and moment diagrams (Beam Loads, Beam Supports, Shear and Moment Diagram)
 
-Three components on the *Beam Shape Explorer → Loads* tab calculate and plot the shear and bending moment along a beam with any number of supports and loads:
+Four components on the *Beam Shape Explorer → Loads* tab calculate and plot the shear and bending moment along a beam with any number of supports and loads:
 
 ```
- Beam Loads ──────Loads──┐
- Beam Supports ───Sup────┼──► Shear and Moment Diagram ──Vu, Mu──► Flexural Analysis / Shear Analysis
- Beam Builder ──SpCrv────┘
+ Beam Loads ──────────Loads──┐
+ Beam Self-Weight ────Loads──┤   (both into the same Loads input)
+ Beam Supports ───────Sup────┼──► Shear and Moment Diagram ──Vu, Mu──► Flexural Analysis / Shear Analysis
+ Beam Builder ──SpCrv────────┘
+     └──BBrep──► Beam Self-Weight
 ```
 
 **Beam Loads** defines the loads. Each list item is one load, and shorter lists repeat their last item:
@@ -30,11 +32,23 @@ Three components on the *Beam Shape Explorer → Loads* tab calculate and plot t
 
 For example, `Load Type = point, distributed`, `Magnitude = 20, 10`, `Location = 2.5, 0` gives a 20 kN point load at 2.5 m and a uniform 10 kN/m load over the whole span. Several Beam Loads components can be connected to the same Loads input.
 
+**Beam Self-Weight** turns the beam's own weight into distributed loads. Connect **Material Properties**, the Beam Builder's **BBrep** and **SpCrv**, and its Loads output goes into the same Loads input as Beam Loads. It measures the brep's cross-section area at *n* evenly spaced sections along the span (default 21), multiplies it by the concrete density, and makes the load vary linearly between the sections. So a shaped beam that is deeper at the supports gets a heavier load there. Other inputs and outputs:
+
+| Input / output | Meaning |
+|---|---|
+| **Load Factor** | Multiplies the self-weight, e.g. 1.2 or 1.4 for a factored dead load. Default 1.0. |
+| **Density (kg/m3)** *(optional)* | Overrides the concrete density from Material Properties, e.g. about 2400–2500 kg/m³ to include reinforcement. Only the brep's volume is weighed. |
+| **Self-Weight (kN/m)**, **Section Locations**, **Section Areas** | The values at each section |
+| **Total Self-Weight (kN)** | The total load. The Description output compares it with the brep's volume, and the component warns if they differ by more than 3% (then increase *n*). |
+| **Section Curves** | The cross-section outlines that were measured, for checking |
+
+In the diagram preview, the self-weight segments are drawn as one load with one label, for example "Self-weight: w = 4.2 to 6.5 kN/m". Use the same span curve for Beam Self-Weight and Shear and Moment Diagram, since both measure locations along it from its start.
+
 **Beam Supports** defines the supports from Grasshopper **points** and a **Support Type** per point: `fixed`, `pinned` or `roller` (`rolling` also works). The points are projected onto the span curve, so the Beam Builder's span end points, or points along it, work directly. Fixed supports restrain movement and rotation; pinned and roller supports restrain movement only. They behave the same for the vertical loads analyzed here.
 
 **Shear and Moment Diagram** takes the **Span Curve** (e.g. the Beam Builder's *SpCrv* output), the loads and the supports, and:
 
-* solves for the reactions, including statically indeterminate beams such as continuous, propped-cantilever and fixed-end beams. Indeterminate beams assume a uniform bending stiffness (EI) along the span; a beam that can't be held by its supports (for example a single pinned support) shows an error.
+* solves for the reactions, including statically indeterminate beams such as continuous, propped-cantilever and fixed-end beams. The results are exact for point loads and uniform or linearly varying distributed loads, however many there are. Indeterminate beams assume a uniform bending stiffness (EI) along the span; a beam that can't be held by its supports (for example a single pinned support) shows an error.
 * outputs **Vu** and **Mu** at *n* evenly spaced analysis sections, like the other load envelopes, so they connect straight to **Flexural Analysis** and **Shear Analysis**. They use the same sign convention: `Vu` is the sum of the upward forces to the left of a section, and `Mu` is negative for sagging and positive for hogging. At a support or point load, `Vu` takes the side with the larger magnitude.
 * outputs the **Reactions** (kN, positive upward) and **Reaction Moments** (kN-m, fixed supports only), the section locations and points, the diagram outlines and fills, and a text **Summary** with the maximum shear and sagging/hogging moments and where they occur.
 * draws a preview in the Rhino viewport: the filled shear diagram above the beam and the moment diagram below it, with vertical jumps at point loads and supports, load arrows, support symbols, reactions, and labels at the extreme values. The diagrams are scaled automatically. **Shear Scale**, **Moment Scale** and **Diagram Offset** override that, and **Up Direction** sets the vertical direction (default Z).

@@ -26,6 +26,8 @@ namespace BeamShapeExplorer.ShearMoment
     {
         public LoadType Type;
         public double A, B, Wa, Wb;
+        /// <summary>Optional group name (e.g. "Self-weight"); only used to label the preview, ignored by the solver.</summary>
+        public string Group;
 
         public static SolverLoad Point(double x, double p) =>
             new SolverLoad { Type = LoadType.Point, A = x, B = x, Wa = p, Wb = p };
@@ -38,8 +40,9 @@ namespace BeamShapeExplorer.ShearMoment
     /// Reactions and internal forces of a straight beam on any number of fixed, pinned and roller supports
     /// (statically determinate or indeterminate), under point loads and linearly varying distributed loads.
     ///
-    /// The reactions come from a direct-stiffness (Euler-Bernoulli) analysis with uniform EI and nodes at every
-    /// support and load boundary, which is exact at the nodes. Shear and moment then follow exactly from
+    /// The reactions come from a direct-stiffness (Euler-Bernoulli) analysis with uniform EI, nodes at the span ends
+    /// and supports, and exact consistent nodal loads, which is exact at the nodes for any number of loads.
+    /// Shear and moment then follow exactly from
     /// equilibrium of the part of the beam left of each section. Pinned and roller supports behave the same here,
     /// because only transverse loads are modelled (they differ only for axial forces).
     ///
@@ -95,7 +98,9 @@ namespace BeamShapeExplorer.ShearMoment
                 {
                     if (l.A < -merge || l.A > length + merge)
                         throw new ArgumentException("A point load at " + l.A.ToString("G4") + " is outside the span (0 to " + length.ToString("G4") + ").");
-                    lds.Add(SolverLoad.Point(Clamp(l.A, 0, length), l.Wa));
+                    SolverLoad pl = SolverLoad.Point(Clamp(l.A, 0, length), l.Wa);
+                    pl.Group = l.Group;
+                    lds.Add(pl);
                 }
                 else
                 {
@@ -107,14 +112,16 @@ namespace BeamShapeExplorer.ShearMoment
                     double ca = Clamp(a, 0, length), cb = Clamp(b, 0, length);
                     if (cb - ca <= merge) continue;
                     double slope = b - a > 0 ? (wb - wa) / (b - a) : 0;
-                    lds.Add(SolverLoad.Distributed(ca, cb, wa + slope * (ca - a), wa + slope * (cb - a)));
+                    SolverLoad dl = SolverLoad.Distributed(ca, cb, wa + slope * (ca - a), wa + slope * (cb - a));
+                    dl.Group = l.Group;
+                    lds.Add(dl);
                 }
             }
 
-            // ---- nodes at the span ends, supports and load boundaries
+            // ---- nodes only at the span ends and supports; loads inside an element are turned into exact
+            //      equivalent nodal forces (consistent loads), so the nodal results stay exact for any number of loads
             var xs = new List<double> { 0, length };
             xs.AddRange(sups.Select(s => s.X));
-            foreach (SolverLoad l in lds) { xs.Add(l.A); xs.Add(l.B); }
             xs.Sort();
             var nodes = new List<double>();
             foreach (double x in xs)
@@ -132,26 +139,36 @@ namespace BeamShapeExplorer.ShearMoment
             var F = new double[ndof];
             for (int e = 0; e < n - 1; e++)
             {
-                double l = nodes[e + 1] - nodes[e];
+                double x1 = nodes[e], x2 = nodes[e + 1], l = x2 - x1;
                 double[,] k = ElementStiffness(l);
                 int[] map = { 2 * e, 2 * e + 1, 2 * e + 2, 2 * e + 3 };
                 for (int r = 0; r < 4; r++)
                     for (int c = 0; c < 4; c++) K[map[r], map[c]] += k[r, c];
 
-                // consistent nodal loads of the distributed loads over this element (upward positive)
-                double xm = 0.5 * (nodes[e] + nodes[e + 1]);
-                foreach (SolverLoad dl in lds)
+                foreach (SolverLoad ld in lds)
                 {
-                    if (dl.Type != LoadType.Distributed || xm <= dl.A || xm >= dl.B) continue;
-                    double q1 = -Intensity(dl, nodes[e]), q2 = -Intensity(dl, nodes[e + 1]);
-                    F[map[0]] += l * (21 * q1 + 9 * q2) / 60.0;
-                    F[map[1]] += l * l * (3 * q1 + 2 * q2) / 60.0;
-                    F[map[2]] += l * (9 * q1 + 21 * q2) / 60.0;
-                    F[map[3]] -= l * l * (2 * q1 + 3 * q2) / 60.0;
+                    if (ld.Type == LoadType.Point)
+                    {
+                        // a point load on a node belongs to the first element that touches it
+                        bool inside = ld.A >= x1 - merge && (ld.A < x2 - merge || (e == n - 2 && ld.A <= x2 + merge));
+                        if (!inside) continue;
+                        double[] N = Shape(Clamp((ld.A - x1) / l, 0, 1), l);
+                        for (int r = 0; r < 4; r++) F[map[r]] -= ld.Wa * N[r];
+                        continue;
+                    }
+                    double a = Math.Max(ld.A, x1), b = Math.Min(ld.B, x2);
+                    if (b - a <= 0) continue;
+                    // integrate N_i(x) q(x) over [a, b]: degree <= 4, so 3-point Gauss-Legendre is exact
+                    double half = 0.5 * (b - a), mid = 0.5 * (a + b);
+                    for (int g = 0; g < 3; g++)
+                    {
+                        double x = mid + half * GaussPoints[g];
+                        double q = -Intensity(ld, x); // upward positive
+                        double[] N = Shape((x - x1) / l, l);
+                        for (int r = 0; r < 4; r++) F[map[r]] += GaussWeights[g] * half * q * N[r];
+                    }
                 }
             }
-            foreach (SolverLoad p in lds)
-                if (p.Type == LoadType.Point) F[2 * NodeOf(p.A)] -= p.Wa;
 
             // ---- restraints
             var restrained = new bool[ndof];
@@ -310,6 +327,16 @@ namespace BeamShapeExplorer.ShearMoment
             double r = -F[row];
             for (int j = 0; j < d.Length; j++) r += K[row, j] * d[j];
             return r;
+        }
+
+        private static readonly double[] GaussPoints = { -Math.Sqrt(0.6), 0.0, Math.Sqrt(0.6) };
+        private static readonly double[] GaussWeights = { 5.0 / 9.0, 8.0 / 9.0, 5.0 / 9.0 };
+
+        /// <summary>Hermite shape functions of a beam element at xi = (x - x1) / l: (v1, theta1, v2, theta2).</summary>
+        private static double[] Shape(double xi, double l)
+        {
+            double x2 = xi * xi, x3 = x2 * xi;
+            return new[] { 1 - 3 * x2 + 2 * x3, l * (xi - 2 * x2 + x3), 3 * x2 - 2 * x3, l * (x3 - x2) };
         }
 
         /// <summary>Euler-Bernoulli beam element stiffness with EI = 1 (reactions do not depend on a uniform EI).</summary>

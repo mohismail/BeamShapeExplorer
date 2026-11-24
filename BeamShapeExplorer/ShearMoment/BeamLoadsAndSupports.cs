@@ -22,15 +22,19 @@ namespace BeamShapeExplorer.ShearMoment
         /// <summary>End of a distributed load; NaN means the end of the span.</summary>
         public double EndLocation = double.NaN;
         public bool Relative;
+        /// <summary>Optional group name: loads of one group (e.g. the segments of a self-weight) get one preview label.</summary>
+        public string Group;
 
         /// <summary>The load in absolute coordinates for a span of the given length.</summary>
         public SolverLoad Resolve(double spanLength)
         {
             double f = Relative ? spanLength : 1.0;
             double a = Location * f;
-            if (Type == LoadType.Point) return SolverLoad.Point(a, Magnitude);
-            double b = double.IsNaN(EndLocation) ? spanLength : EndLocation * f;
-            return SolverLoad.Distributed(a, b, Magnitude, EndMagnitude);
+            SolverLoad load;
+            if (Type == LoadType.Point) load = SolverLoad.Point(a, Magnitude);
+            else load = SolverLoad.Distributed(a, double.IsNaN(EndLocation) ? spanLength : EndLocation * f, Magnitude, EndMagnitude);
+            load.Group = Group;
+            return load;
         }
 
         public static LoadType? ParseType(string text)

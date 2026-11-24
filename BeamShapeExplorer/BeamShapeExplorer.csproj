@@ -82,6 +82,7 @@
     <Compile Include="Optimization\SamplingPlanComponent.cs" />
     <Compile Include="Optimization\SobolDirectionNumbers.cs" />
     <Compile Include="ShearMoment\BeamLoadsAndSupports.cs" />
+    <Compile Include="ShearMoment\BeamSelfWeightComponent.cs" />
     <Compile Include="ShearMoment\BeamLoadsComponent.cs" />
     <Compile Include="ShearMoment\BeamSolver.cs" />
     <Compile Include="ShearMoment\ShearMomentComponent.cs" />

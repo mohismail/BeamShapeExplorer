@@ -381,6 +381,7 @@ namespace BeamShapeExplorer.ShearMoment
                                    .Select(l => Math.Max(Math.Abs(l.Wa), Math.Abs(l.Wb))).DefaultIfEmpty(0).Max();
             foreach (SolverLoad l in sol.Loads)
             {
+                if (l.Group != null && l.Type == LoadType.Distributed) continue; // drawn per group below
                 if (l.Type == LoadType.Point)
                 {
                     if (!Frame(span, l.A, up, out Point3d p, out _, out Vector3d n)) continue;
@@ -413,6 +414,39 @@ namespace BeamShapeExplorer.ShearMoment
                 {
                     string text = Math.Abs(l.Wa - l.Wb) < 1e-12 ? "w = " + Num(l.Wa) + " kN/m" : "w = " + Num(l.Wa) + " to " + Num(l.Wb) + " kN/m";
                     pv.Labels.Add(new Label { Text = text, Point = mid + nm * (h + 0.03 * length), Color = LoadColor });
+                }
+            }
+
+            // grouped distributed loads (e.g. the segments of a self-weight): one profile, evenly spaced arrows, one label
+            foreach (var group in sol.Loads.Where(l => l.Group != null && l.Type == LoadType.Distributed).GroupBy(l => l.Group))
+            {
+                var segs = group.OrderBy(l => l.A).ToList();
+                double h = 0.06 * length;
+                foreach (SolverLoad s in segs)
+                {
+                    var top = new Polyline();
+                    foreach (double x in new[] { s.A, s.B })
+                        if (Frame(span, x, up, out Point3d p, out _, out Vector3d n))
+                            top.Add(p + n * (maxW > 0 ? h * Math.Abs(x == s.A ? s.Wa : s.Wb) / maxW : 0) + n * 0.01 * length);
+                    if (top.Count == 2) pv.LoadProfiles.Add(top);
+                }
+                double a = segs[0].A, b = segs.Max(s => s.B);
+                int arrows = Math.Max(2, (int)Math.Round((b - a) / length * 12) + 1);
+                for (int k = 0; k < arrows; k++)
+                {
+                    double x = a + (b - a) * k / (arrows - 1);
+                    double w = segs.Where(s => x >= s.A - 1e-12 && x <= s.B + 1e-12)
+                                   .Select(s => s.B > s.A ? s.Wa + (s.Wb - s.Wa) * (x - s.A) / (s.B - s.A) : s.Wa)
+                                   .DefaultIfEmpty(0).First();
+                    if (Math.Abs(w) < 1e-12 || !Frame(span, x, up, out Point3d p, out _, out Vector3d n)) continue;
+                    Point3d tail = p + n * (h * Math.Abs(w) / maxW + 0.01 * length);
+                    pv.LoadArrows.Add(w >= 0 ? new Line(tail, p) : new Line(p, tail));
+                }
+                double wMin = segs.Min(s => Math.Min(s.Wa, s.Wb)), wMax = segs.Max(s => Math.Max(s.Wa, s.Wb));
+                if (Frame(span, 0.5 * (a + b), up, out Point3d mid, out _, out Vector3d nm))
+                {
+                    string range = wMax - wMin < 1e-9 * Math.Max(1, Math.Abs(wMax)) ? Num(wMax) : Num(wMin) + " to " + Num(wMax);
+                    pv.Labels.Add(new Label { Text = group.Key + ": w = " + range + " kN/m", Point = mid + nm * (h + 0.03 * length), Color = LoadColor });
                 }
             }
         }
