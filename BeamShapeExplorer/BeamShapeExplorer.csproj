@@ -81,6 +81,10 @@
     <Compile Include="Optimization\SamplingPlan.cs" />
     <Compile Include="Optimization\SamplingPlanComponent.cs" />
     <Compile Include="Optimization\SobolDirectionNumbers.cs" />
+    <Compile Include="ShearMoment\BeamLoadsAndSupports.cs" />
+    <Compile Include="ShearMoment\BeamLoadsComponent.cs" />
+    <Compile Include="ShearMoment\BeamSolver.cs" />
+    <Compile Include="ShearMoment\ShearMomentComponent.cs" />
     <Compile Include="ICracked.cs" />
     <Compile Include="CrackingMoment.cs" />
     <Compile Include="IEffective.cs" />
@@ -167,6 +171,15 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="Resources\loaduni2.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Resources\beamloads.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Resources\beamsupports.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Resources\smdiagram.png" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
