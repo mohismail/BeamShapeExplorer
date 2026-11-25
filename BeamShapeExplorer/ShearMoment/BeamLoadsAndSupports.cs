@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 
 using Rhino.Geometry;
 
@@ -85,6 +87,27 @@ namespace BeamShapeExplorer.ShearMoment
             return Type + " support at (" + Point.X.ToString("0.###", CultureInfo.InvariantCulture) + ", " +
                    Point.Y.ToString("0.###", CultureInfo.InvariantCulture) + ", " +
                    Point.Z.ToString("0.###", CultureInfo.InvariantCulture) + ")";
+        }
+    }
+
+    /// <summary>
+    /// The complete beam definition from Shear and Moment Diagram: span curve, supports and loads (located along the
+    /// span), and the Up direction. Service Deflection uses it, so loads and supports are defined only once.
+    /// </summary>
+    public class BeamModel
+    {
+        public Curve Span;
+        public double Length;
+        public List<SolverSupport> Supports = new List<SolverSupport>();
+        public List<SolverLoad> Loads = new List<SolverLoad>();
+        public Vector3d Up = Vector3d.ZAxis;
+
+        public override string ToString()
+        {
+            string sup = string.Join(", ", Supports.Select(s => s.Type.ToString().ToLowerInvariant() + " at " +
+                                                                   s.X.ToString("0.###", CultureInfo.InvariantCulture)));
+            return "Beam Model: span " + Length.ToString("0.###", CultureInfo.InvariantCulture) + " m, " +
+                   Supports.Count + " support(s) (" + sup + "), " + Loads.Count + " load(s)";
         }
     }
 }

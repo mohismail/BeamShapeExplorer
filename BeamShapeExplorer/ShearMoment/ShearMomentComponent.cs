@@ -116,6 +116,9 @@ namespace BeamShapeExplorer.ShearMoment
             pManager.AddCurveParameter("Moment Diagram", "MDiag", "Closed outline of the moment diagram.", GH_ParamAccess.item);
             pManager.AddMeshParameter("Diagram Fills", "Fill", "Filled shear and moment diagrams (for baking or rendering).", GH_ParamAccess.list);
             pManager.AddTextParameter("Summary", "S", "Reactions and maximum shear and moments.", GH_ParamAccess.list);
+            pManager.AddGenericParameter("Beam Model", "Beam",
+                "The span curve, supports and loads of this analysis. Connect it to Service Deflection (with unfactored " +
+                "service loads) to calculate the deflection without defining the loads and supports again.", GH_ParamAccess.item);
 
             // drawn by the component's own preview instead
             ((IGH_PreviewObject)pManager[3]).Hidden = true;
@@ -284,6 +287,14 @@ namespace BeamShapeExplorer.ShearMoment
             DA.SetData(7, preview.MomentOutline.ToNurbsCurve());
             DA.SetDataList(8, fills);
             DA.SetDataList(9, summary);
+            DA.SetData(10, new BeamModel
+            {
+                Span = span.DuplicateCurve(),
+                Length = length,
+                Supports = sol.Supports.ToList(),
+                Loads = sol.Loads.ToList(),
+                Up = up,
+            });
         }
 
         // ================================================================== geometry helpers

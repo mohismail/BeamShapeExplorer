@@ -22,7 +22,8 @@ namespace BeamShapeExplorer.ShearMoment
               "Effective moment of inertia, rotation and deflection of a shaped reinforced concrete beam under service " +
               "loads. For each section it computes the uncracked (Iu) and cracked (Icr) moments of inertia from the actual " +
               "section shape, the cracking moment (Mcr) and the effective moment of inertia (Ieff), then solves the beam " +
-              "with the resulting stiffness for any supports. Short-term (immediate) deflection only.",
+              "with the resulting stiffness. The span, supports and loads come from Shear and Moment Diagram (Beam Model " +
+              "output, with unfactored service loads). Short-term (immediate) deflection only.",
               "Beam Shape Explorer", "Analysis")
         {
         }
@@ -37,14 +38,10 @@ namespace BeamShapeExplorer.ShearMoment
             pManager.AddCurveParameter("Steel Section", "As",
                 "Steel reinforcement section for each concrete section (same order), e.g. from Beam Sections. A section " +
                 "without steel can have a degenerate curve.", GH_ParamAccess.list);
-            pManager.AddCurveParameter("Span Curve", "SpnCrv",
-                "Curve representing the span of the beam, e.g. the Beam Builder's Span Curve. Each section is located by " +
-                "projecting it onto this curve.", GH_ParamAccess.item);
-            pManager.AddGenericParameter("Service Loads", "Loads",
-                "Unfactored service loads from Beam Loads and Load Envelope from Selfweight (Load Factor 1.0).", GH_ParamAccess.list);
-            pManager.AddGenericParameter("Supports", "Sup",
-                "(Optional) Supports from Beam Supports. Default: simply supported (pinned at the start of the span curve, " +
-                "roller at its end).", GH_ParamAccess.list);
+            pManager.AddGenericParameter("Beam Model", "Beam",
+                "The Beam Model output of a Shear and Moment Diagram component whose loads are the unfactored service loads " +
+                "(Beam Loads, and Load Envelope from Selfweight with Load Factor 1.0). It provides the span curve, the " +
+                "supports and the loads; each section is located by projecting it onto the span curve.", GH_ParamAccess.item);
             pManager.AddIntegerParameter("Effective Moment of Inertia Method", "Method",
                 "0 = Branson: Ie = (Mcr/Ma)^3 Iu + [1 - (Mcr/Ma)^3] Icr. 1 = Bischoff: Ie = Icr / [1 - (Mcr/Ma)^2 (1 - Icr/Iu)] " +
                 "(default; more realistic for lightly reinforced sections).", GH_ParamAccess.item, 1);
@@ -57,13 +54,9 @@ namespace BeamShapeExplorer.ShearMoment
             pManager.AddNumberParameter("Deflection Scale", "Scale",
                 "(Optional) Exaggeration of the deflected shape. Default: automatic (the largest deflection drawn as 10% of the span).",
                 GH_ParamAccess.item);
-            pManager.AddVectorParameter("Up Direction", "Up",
-                "Direction opposite to gravity; the section height is measured along it and loads act against it.",
-                GH_ParamAccess.item, Vector3d.ZAxis);
 
             pManager[5].Optional = true;
             pManager[7].Optional = true;
-            pManager[9].Optional = true;
         }
 
         protected override void RegisterOutputParams(GH_Component.GH_OutputParamManager pManager)
@@ -91,24 +84,30 @@ namespace BeamShapeExplorer.ShearMoment
             MaterialProperties mp = null;
             var concrete = new List<Curve>();
             var steel = new List<Curve>();
-            Curve span = null;
-            var loadObjects = new List<object>();
-            var supportObjects = new List<object>();
+            object modelObject = null;
             int methodIndex = 1;
             double fr = double.NaN, limit = 250, scale = double.NaN;
-            Vector3d up = Vector3d.ZAxis;
 
             if (!DA.GetData(0, ref mp) || mp == null) return;
             if (!DA.GetDataList(1, concrete)) return;
             if (!DA.GetDataList(2, steel)) return;
-            if (!DA.GetData(3, ref span) || span == null) return;
-            if (!DA.GetDataList(4, loadObjects)) return;
-            DA.GetDataList(5, supportObjects);
-            DA.GetData(6, ref methodIndex);
-            bool frGiven = DA.GetData(7, ref fr);
-            DA.GetData(8, ref limit);
-            bool scaleGiven = DA.GetData(9, ref scale);
-            DA.GetData(10, ref up);
+            if (!DA.GetData(3, ref modelObject) || modelObject == null) return;
+            DA.GetData(4, ref methodIndex);
+            bool frGiven = DA.GetData(5, ref fr);
+            DA.GetData(6, ref limit);
+            bool scaleGiven = DA.GetData(7, ref scale);
+
+            BeamModel model = Unwrap<BeamModel>(modelObject);
+            if (model == null || model.Span == null)
+            {
+                AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "Beam Model must come from the Shear and Moment Diagram component's Beam Model output.");
+                return;
+            }
+            Curve span = model.Span;
+            Vector3d up = model.Up;
+            var loads = model.Loads;
+            var supports = model.Supports;
+            if (loads.Count == 0) AddRuntimeMessage(GH_RuntimeMessageLevel.Remark, "The Beam Model has no loads: the deflection is zero.");
 
             if (methodIndex != 0 && methodIndex != 1) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "Method must be 0 (Branson) or 1 (Bischoff)."); return; }
             var method = (EffectiveInertiaMethod)methodIndex;
@@ -117,7 +116,7 @@ namespace BeamShapeExplorer.ShearMoment
                 AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "Concrete Section and Steel Section need the same number of curves (one steel section per concrete section).");
                 return;
             }
-            if (!up.Unitize()) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "Up Direction cannot be a zero vector."); return; }
+            if (!up.Unitize()) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "The Beam Model's Up direction is a zero vector."); return; }
             if (!(mp.EC > 0) || !(mp.ES > 0) || !(mp.fC > 0)) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "Material Properties need positive f'c, Ec and Es."); return; }
             if (!(limit > 0)) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "Deflection Limit must be greater than zero."); return; }
             double length = span.GetLength();
@@ -157,30 +156,6 @@ namespace BeamShapeExplorer.ShearMoment
                     return;
                 }
                 xs.Add(span.GetLength(new Interval(span.Domain.Min, t)));
-            }
-
-            // ---- loads and supports
-            var loads = new List<SolverLoad>();
-            foreach (object o in loadObjects)
-            {
-                BeamLoad l = Unwrap<BeamLoad>(o);
-                if (l == null) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "Service Loads must come from Beam Loads or Load Envelope from Selfweight."); return; }
-                loads.Add(l.Resolve(length));
-            }
-            var supports = new List<SolverSupport>();
-            var supportTypes = new List<SupportType>();
-            foreach (object o in supportObjects)
-            {
-                BeamSupport s = Unwrap<BeamSupport>(o);
-                if (s == null) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "Supports must come from Beam Supports."); return; }
-                if (!span.ClosestPoint(s.Point, out double t)) { AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "Could not project a support onto the span curve."); return; }
-                supports.Add(new SolverSupport(span.GetLength(new Interval(span.Domain.Min, t)), s.Type));
-            }
-            if (supports.Count == 0)
-            {
-                supports.Add(new SolverSupport(0, SupportType.Pinned));
-                supports.Add(new SolverSupport(length, SupportType.Roller));
-                AddRuntimeMessage(GH_RuntimeMessageLevel.Remark, "No supports connected: the beam is simply supported at the ends of the span curve.");
             }
 
             ServiceDeflectionResult result;
