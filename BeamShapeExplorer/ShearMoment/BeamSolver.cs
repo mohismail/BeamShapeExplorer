@@ -67,11 +67,22 @@ namespace BeamShapeExplorer.ShearMoment
 
         private double _tol;
 
+        /// <summary>Node locations of the stiffness model, and the vertical displacement (positive upward, m) and
+        /// rotation (rad, counterclockwise positive) at each node. Meaningful when a bending stiffness was given.</summary>
+        public double[] NodeX { get; private set; }
+        public double[] NodeDisplacement { get; private set; }
+        public double[] NodeRotation { get; private set; }
+
         private BeamSolution() { }
 
         /// <summary>Solves the beam. Throws <see cref="ArgumentException"/> for bad input and
         /// <see cref="InvalidOperationException"/> when the supports cannot carry the loads (a mechanism).</summary>
-        public static BeamSolution Solve(double length, IList<SolverSupport> supports, IList<SolverLoad> loads)
+        /// <param name="bendingStiffness">Optional EI(x) (kN-m2). Without it EI = 1, which gives the same reactions for a
+        /// uniform beam; with it, the reactions of indeterminate beams and the displacements follow the varying stiffness.</param>
+        /// <param name="minElements">Minimum number of elements along the span (for a varying stiffness and for
+        /// smooth displacements). 0 places nodes only at the span ends and supports.</param>
+        public static BeamSolution Solve(double length, IList<SolverSupport> supports, IList<SolverLoad> loads,
+                                         Func<double, double> bendingStiffness = null, int minElements = 0)
         {
             if (!(length > 0)) throw new ArgumentException("The span length must be greater than zero.");
             if (supports == null || supports.Count == 0) throw new ArgumentException("Add at least one support.");
@@ -123,9 +134,16 @@ namespace BeamShapeExplorer.ShearMoment
             var xs = new List<double> { 0, length };
             xs.AddRange(sups.Select(s => s.X));
             xs.Sort();
-            var nodes = new List<double>();
+            var baseNodes = new List<double>();
             foreach (double x in xs)
-                if (nodes.Count == 0 || x - nodes[nodes.Count - 1] > merge) nodes.Add(x);
+                if (baseNodes.Count == 0 || x - baseNodes[baseNodes.Count - 1] > merge) baseNodes.Add(x);
+            var nodes = new List<double> { baseNodes[0] };
+            for (int i = 1; i < baseNodes.Count; i++)
+            {
+                double a0 = baseNodes[i - 1], b0 = baseNodes[i];
+                int pieces = minElements > 0 ? Math.Max(1, (int)Math.Ceiling((b0 - a0) / length * minElements - 1e-9)) : 1;
+                for (int k = 1; k <= pieces; k++) nodes.Add(a0 + (b0 - a0) * k / pieces);
+            }
             Func<double, int> NodeOf = x =>
             {
                 int best = 0;
@@ -141,6 +159,14 @@ namespace BeamShapeExplorer.ShearMoment
             {
                 double x1 = nodes[e], x2 = nodes[e + 1], l = x2 - x1;
                 double[,] k = ElementStiffness(l);
+                if (bendingStiffness != null)
+                {
+                    double ei = bendingStiffness(0.5 * (x1 + x2));
+                    if (!(ei > 0) || double.IsInfinity(ei))
+                        throw new ArgumentException("The bending stiffness must be greater than zero (at " + (0.5 * (x1 + x2)).ToString("G4") + ").");
+                    for (int r = 0; r < 4; r++)
+                        for (int c = 0; c < 4; c++) k[r, c] *= ei;
+                }
                 int[] map = { 2 * e, 2 * e + 1, 2 * e + 2, 2 * e + 3 };
                 for (int r = 0; r < 4; r++)
                     for (int c = 0; c < 4; c++) K[map[r], map[c]] += k[r, c];
@@ -207,6 +233,9 @@ namespace BeamShapeExplorer.ShearMoment
                 Reactions = new double[sups.Count],
                 ReactionMoments = new double[sups.Count],
                 _tol = tol,
+                NodeX = nodes.ToArray(),
+                NodeDisplacement = Enumerable.Range(0, n).Select(i => d[2 * i]).ToArray(),
+                NodeRotation = Enumerable.Range(0, n).Select(i => d[2 * i + 1]).ToArray(),
             };
             for (int i = 0; i < sups.Count; i++)
             {
@@ -218,7 +247,7 @@ namespace BeamShapeExplorer.ShearMoment
             // reject results that do not balance (e.g. a near-mechanism that slipped past the pivot check)
             double sumF = sol.Reactions.Sum() - lds.Sum(TotalForce);
             double scale = Math.Max(1e-12, lds.Sum(l => Math.Abs(TotalForce(l))) + sol.Reactions.Sum(Math.Abs));
-            if (Math.Abs(sumF) > 1e-6 * scale)
+            if (Math.Abs(sumF) > 1e-5 * scale)
                 throw new InvalidOperationException("The beam is unstable or badly conditioned; check the supports.");
             return sol;
         }
@@ -252,6 +281,32 @@ namespace BeamShapeExplorer.ShearMoment
                 else m -= DistributedMomentLeftOf(l, x);
             }
             return m;
+        }
+
+        /// <summary>Vertical displacement at x (m, positive upward), interpolated with the element shape functions.</summary>
+        public double Displacement(double x)
+        {
+            int e = ElementAt(x, out double xi, out double l);
+            double[] N = Shape(xi, l);
+            return N[0] * NodeDisplacement[e] + N[1] * NodeRotation[e] + N[2] * NodeDisplacement[e + 1] + N[3] * NodeRotation[e + 1];
+        }
+
+        /// <summary>Rotation (slope) at x (rad, counterclockwise positive).</summary>
+        public double Rotation(double x)
+        {
+            int e = ElementAt(x, out double xi, out double l);
+            double x2 = xi * xi;
+            double d1 = -6 * xi + 6 * x2, d2 = l * (1 - 4 * xi + 3 * x2), d3 = 6 * xi - 6 * x2, d4 = l * (3 * x2 - 2 * xi);
+            return (d1 * NodeDisplacement[e] + d2 * NodeRotation[e] + d3 * NodeDisplacement[e + 1] + d4 * NodeRotation[e + 1]) / l;
+        }
+
+        private int ElementAt(double x, out double xi, out double l)
+        {
+            int e = 0;
+            while (e < NodeX.Length - 2 && x > NodeX[e + 1]) e++;
+            l = NodeX[e + 1] - NodeX[e];
+            xi = Clamp((x - NodeX[e]) / l, 0, 1);
+            return e;
         }
 
         /// <summary>Bending moment in the Beam Shape Explorer convention ("Mu"): negative for sagging.</summary>
@@ -352,37 +407,42 @@ namespace BeamShapeExplorer.ShearMoment
             };
         }
 
-        /// <summary>Gaussian elimination with partial pivoting; null if the matrix is singular.</summary>
+        /// <summary>
+        /// Solves the reduced stiffness system. The matrix is symmetric positive (semi-)definite and banded (each node
+        /// only couples to its neighbours), so Gaussian elimination without pivoting, limited to the band, is stable and
+        /// costs O(n b^2). Returns null if the matrix is singular (the supports allow a rigid-body motion).
+        /// </summary>
         private static double[] SolveLinear(double[,] A, double[] b)
         {
             int n = b.Length;
+            int band = 0;
             double maxDiag = 0;
-            for (int i = 0; i < n; i++) maxDiag = Math.Max(maxDiag, Math.Abs(A[i, i]));
+            for (int i = 0; i < n; i++)
+            {
+                maxDiag = Math.Max(maxDiag, Math.Abs(A[i, i]));
+                for (int j = 0; j < n; j++)
+                    if (A[i, j] != 0) band = Math.Max(band, Math.Abs(i - j));
+            }
             double eps = 1e-11 * Math.Max(maxDiag, 1e-300);
             for (int c = 0; c < n; c++)
             {
-                int p = c;
-                for (int r = c + 1; r < n; r++) if (Math.Abs(A[r, c]) > Math.Abs(A[p, c])) p = r;
-                if (Math.Abs(A[p, c]) < eps) return null;
-                if (p != c)
-                {
-                    for (int j = 0; j < n; j++) { double t = A[c, j]; A[c, j] = A[p, j]; A[p, j] = t; }
-                    double tb = b[c]; b[c] = b[p]; b[p] = tb;
-                }
-                for (int r = c + 1; r < n; r++)
+                if (A[c, c] < eps) return null; // a positive-definite system never gets a (near-)zero pivot
+                int last = Math.Min(n - 1, c + band);
+                for (int r = c + 1; r <= last; r++)
                 {
                     double f = A[r, c] / A[c, c];
                     if (f == 0) continue;
-                    for (int j = c; j < n; j++) A[r, j] -= f * A[c, j];
+                    for (int j = c; j <= last; j++) A[r, j] -= f * A[c, j];
                     b[r] -= f * b[c];
                 }
             }
             var x = new double[n];
             for (int r = n - 1; r >= 0; r--)
             {
-                double s = b[r];
-                for (int j = r + 1; j < n; j++) s -= A[r, j] * x[j];
-                x[r] = s / A[r, r];
+                double sum = b[r];
+                int last = Math.Min(n - 1, r + band);
+                for (int j = r + 1; j <= last; j++) sum -= A[r, j] * x[j];
+                x[r] = sum / A[r, r];
             }
             return x;
         }

@@ -85,6 +85,9 @@
     <Compile Include="ShearMoment\BeamLoadsComponent.cs" />
     <Compile Include="ShearMoment\BeamSolver.cs" />
     <Compile Include="ShearMoment\ShearMomentComponent.cs" />
+    <Compile Include="ShearMoment\SectionMechanics.cs" />
+    <Compile Include="ShearMoment\ServiceDeflection.cs" />
+    <Compile Include="ShearMoment\ServiceDeflectionComponent.cs" />
     <Compile Include="ICracked.cs" />
     <Compile Include="CrackingMoment.cs" />
     <Compile Include="IEffective.cs" />
@@ -180,6 +183,9 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="Resources\smdiagram.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Resources\deflection.png" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 

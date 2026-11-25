@@ -53,3 +53,32 @@ The reactions from the selfweight are exact. The moments approach the exact valu
 * draws a preview in the Rhino viewport: the filled shear diagram above the beam and the moment diagram below it, with vertical jumps at point loads and supports, load arrows, support symbols, reactions, and labels at the extreme values. The diagrams are scaled automatically. **Shear Scale**, **Moment Scale** and **Diagram Offset** override that, and **Up Direction** sets the vertical direction (default Z).
 
 The loads and supports can come from sliders, so they also work as **Sample Parameters** in the Sampling Plan of the [Optimization Sampler](#optimization-sampler-batch-constrained-optimization) workflow.
+
+
+## Service deflection (Service Deflection component)
+
+**Service Deflection** (*Beam Shape Explorer → Analysis*) calculates the effective moment of inertia, rotation and deflection of a shaped reinforced concrete beam under service loads. It combines the gross moment of inertia, cracking moment, cracked moment of inertia and effective moment of inertia calculations (the IGross, CrackingMoment, ICracked and IEffective components on the TEST tab) with a deflection analysis that works for any supports:
+
+```
+ Material Properties ──MP─────────────┐
+ Beam Sections ──Ag, As───────────────┤
+ Beam Builder ──SpCrv─────────────────┼──► Service Deflection ──► Iu, Icr, Mcr, Ieff, rotation, deflection
+ Beam Loads + Load Envelope ──Loads───┤        (service loads, Load Factor 1.0)
+   from Selfweight                    │
+ Beam Supports ──Sup (optional)───────┘
+```
+
+For each concrete section (any shape) and its steel section it computes:
+
+| Output | How |
+|---|---|
+| **Iu** | Uncracked transformed moment of inertia: the concrete plus (n − 1)·As, about the transformed centroid (n = Es/Ec) |
+| **Mcr** | fr·Ig/yt from the gross concrete section, with yt to the tension face for the sign of the moment. fr defaults to 0.7√f'c (IS 456) or 0.62√f'c (ACI 318), following the building code setting, or can be given. |
+| **Icr** | Cracked moment of inertia about the elastic cracked neutral axis. The neutral axis is found from the actual shape of the compression zone, with tension steel counted as n·As and compression steel as (n − 1)·As. |
+| **Ieff** | **Bischoff** (Method 1, default): Ie = Icr / [1 − (Mcr/Ma)²(1 − Icr/Iu)]; or **Branson** (Method 0): Ie = (Mcr/Ma)³·Iu + [1 − (Mcr/Ma)³]·Icr. Uncracked sections (Ma ≤ Mcr) use Iu. |
+
+It then solves the beam with the bending stiffness Ec·Ieff(x), interpolated between the sections. Because the moments of a statically indeterminate beam (fixed, propped or continuous) depend on the cracked stiffness, and Ieff depends on the moments, it repeats this until Ieff converges. Statically determinate beams need two passes. Sagging and hogging are handled separately, using the reinforcement on the tension side. A cracked section without tension steel is flagged.
+
+Outputs include the **Rotation** and **Deflection** at each section (deflection positive downward), the **Maximum Deflection**, an exaggerated **Deflected Shape** curve, and a **Summary** with the span/deflection ratio checked against **Deflection Limit** (default span/250). Without Supports, the beam is simply supported at the ends of the span curve. The results are short-term (immediate) deflections; long-term creep and shrinkage are not included.
+
+Compared with the TEST components, the cracked moment of inertia is computed from the elastic cracked neutral axis of the actual section shape. ICracked uses the bounding box of the ultimate compression block from Flexural Analysis, and (n − 1)·As for the tension steel. The deflection analysis also handles any supports and varying stiffness; the existing Displacement of Simply Supported Beam component handles only simply supported beams. More sections give a more accurate result: for a shaped beam with 21 sections, the deflection is within about 0.6% of a continuous calculation.

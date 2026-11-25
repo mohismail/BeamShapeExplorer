@@ -93,6 +93,16 @@ namespace BeamShapeExplorer.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
+        internal static System.Drawing.Bitmap deflection {
+            get {
+                object obj = ResourceManager.GetObject("deflection", resourceCulture);
+                return ((System.Drawing.Bitmap)(obj));
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized resource of type System.Drawing.Bitmap.
+        /// </summary>
         internal static System.Drawing.Bitmap bcode {
             get {
                 object obj = ResourceManager.GetObject("bcode", resourceCulture);
